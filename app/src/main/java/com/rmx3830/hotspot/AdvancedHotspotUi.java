@@ -67,6 +67,8 @@ final class AdvancedHotspotUi {
         }
     }
 
+    static void open(Context context) { showEditor(context); }
+
     private static void showEditor(Context context) {
         try {
             Object wifi = context.getSystemService(Context.WIFI_SERVICE);
@@ -125,10 +127,6 @@ final class AdvancedHotspotUi {
             timeoutEdit.setText(String.valueOf(initialTimeout));
             content.addView(timeoutEdit);
 
-            CheckBox autoBox = check(context, "Автоотключение включено в системе", storedAuto);
-            autoBox.setEnabled(false);
-            content.addView(autoBox);
-
             CheckBox isolationBox = check(context,
                     "Изоляция клиентов", storedIsolation);
             boolean isolationSupported = hasMethod(current, "isClientIsolationEnabled")
@@ -139,10 +137,10 @@ final class AdvancedHotspotUi {
             }
             content.addView(isolationBox);
 
-            CheckBox controlBox = check(context,
-                    "Белый список включён", clientControl);
-            controlBox.setEnabled(false);
-            content.addView(controlBox);
+            Button isolationHelp = new Button(context);
+            isolationHelp.setText("Как проверить изоляцию");
+            isolationHelp.setOnClickListener(v -> showIsolationHelp(context));
+            content.addView(isolationHelp);
 
             ScrollView scroll = new ScrollView(context);
             scroll.setFillViewport(true);
@@ -211,12 +209,12 @@ final class AdvancedHotspotUi {
 
                     Object config = invoke(wifi, "getSoftApConfiguration");
                     if (config == null) throw new IllegalStateException("softap_config_null");
-                    apply(wifi, config, clients, autoBox.isChecked(), timeoutMinutes,
+                    apply(wifi, config, clients, timeoutMinutes,
                             isolationSupported && isolationBox.isChecked());
 
                     new Handler(Looper.getMainLooper()).postDelayed(
-                            () -> verifyAndLog(wifi, clients, autoBox.isChecked(),
-                                    timeoutMinutes, isolationSupported && isolationBox.isChecked()), 500);
+                            () -> verifyAndLog(wifi, clients, timeoutMinutes,
+                                    isolationSupported && isolationBox.isChecked()), 500);
                     unregisterClientCallback(wifi, callback);
                     dialog.dismiss();
                 } catch (Throwable t) {
@@ -259,14 +257,19 @@ final class AdvancedHotspotUi {
             actions.setGravity(Gravity.END);
             Button disconnect = new Button(counter.getContext());
             disconnect.setText("Отключить");
+            Button allow = new Button(counter.getContext());
+            allow.setText("Белый список");
             Button block = new Button(counter.getContext());
             block.setText("Заблокировать");
             actions.addView(disconnect);
+            actions.addView(allow);
             actions.addView(block);
             row.addView(actions);
             list.addView(row);
 
             disconnect.setOnClickListener(v -> forceTemporaryDisconnect(
+                    counter.getContext(), clientMac(client)));
+            allow.setOnClickListener(v -> allowClient(
                     counter.getContext(), clientMac(client)));
             block.setOnClickListener(v -> blockClient(
                     counter.getContext(), clientMac(client)));
@@ -427,6 +430,21 @@ final class AdvancedHotspotUi {
                 }).show();
     }
 
+    private static void allowClient(Context context, String mac) {
+        try {
+            Object wifi = context.getSystemService(Context.WIFI_SERVICE);
+            Object cfg = invoke(wifi, "getSoftApConfiguration");
+            List<Object> blocked = copyList(invoke(cfg, "getBlockedClientList"));
+            List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
+            blocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
+            if (!containsMac(allowed, mac)) allowed.add(parseMac(mac));
+            applyClientLists(wifi, true, allowed, blocked);
+            Log.i(TAG, "CLIENT_ALLOWED mac=" + mac);
+        } catch (Throwable t) {
+            showError(context, "Белый список", t);
+        }
+    }
+
     private static void blockClient(Context context, String mac) {
         try {
             Object wifi = context.getSystemService(Context.WIFI_SERVICE);
@@ -493,7 +511,7 @@ final class AdvancedHotspotUi {
     }
 
     private static void apply(Object wifi, Object current, int clients,
-            boolean autoOff, int timeoutMinutes, boolean isolation) throws Exception {
+            int timeoutMinutes, boolean isolation) throws Exception {
         Class<?> builderClass = Class.forName(
                 "android.net.wifi.SoftApConfiguration$Builder", false,
                 current.getClass().getClassLoader());
@@ -501,18 +519,27 @@ final class AdvancedHotspotUi {
         Object builder = ctor.newInstance(current);
 
         call(builder, "setMaxNumberOfClients", new Class<?>[]{int.class}, clients);
-        call(builder, "setAutoShutdownEnabled", new Class<?>[]{boolean.class}, autoOff);
         call(builder, "setShutdownTimeoutMillis", new Class<?>[]{long.class},
                 timeoutMinutes * 60_000L);
-        if (hasBuilderMethod(current, "setClientIsolationEnabled")) {
-            call(builder, "setClientIsolationEnabled",
-                    new Class<?>[]{boolean.class}, isolation);
-        }
 
         setSoftApConfiguration(wifi, invoke(builder, "build"));
         Log.i(TAG, "SETTINGS_ADVANCED_APPLIED clients=" + clients
-                + " autoOff=" + autoOff + " timeoutMin=" + timeoutMinutes
-                + " isolation=" + isolation);
+                + " timeoutMin=" + timeoutMinutes);
+
+        if (hasBuilderMethod(current, "setClientIsolationEnabled")) {
+            try {
+                Object isolationBuilder = ctor.newInstance(invoke(wifi, "getSoftApConfiguration"));
+                call(isolationBuilder, "setClientIsolationEnabled",
+                        new Class<?>[]{boolean.class}, isolation);
+                setSoftApConfiguration(wifi, invoke(isolationBuilder, "build"));
+                Log.i(TAG, "SETTINGS_ISOLATION_APPLIED isolation=" + isolation);
+            } catch (Throwable isolationError) {
+                Log.i(TAG, "SETTINGS_ISOLATION_UNAVAILABLE "
+                        + isolationError.getClass().getSimpleName());
+            }
+        } else {
+            Log.i(TAG, "SETTINGS_ISOLATION_UNAVAILABLE method_missing");
+        }
     }
 
     private static void setSoftApConfiguration(Object wifi, Object config) throws Exception {
@@ -526,23 +553,22 @@ final class AdvancedHotspotUi {
     }
 
     private static void verifyAndLog(Object wifi, int expectedClients,
-            boolean expectedAuto, int expectedTimeoutMinutes, boolean expectedIsolation) {
+            int expectedTimeoutMinutes, boolean expectedIsolation) {
         try {
             Object cfg = invoke(wifi, "getSoftApConfiguration");
             int clients = ((Number) invoke(cfg, "getMaxNumberOfClients")).intValue();
-            boolean auto = (Boolean) invoke(cfg, "isAutoShutdownEnabled");
             long timeout = ((Number) invoke(cfg, "getShutdownTimeoutMillis")).longValue();
             boolean isolation = readBoolean(cfg, "isClientIsolationEnabled", false);
             Log.i(TAG, "SETTINGS_ADVANCED_VERIFY clients=" + clients
-                    + " autoOff=" + auto + " timeoutMs=" + timeout
+                    + " timeoutMs=" + timeout
                     + " isolation=" + isolation
                     + " expectedClients=" + expectedClients
                     + " expectedTimeoutMs=" + (expectedTimeoutMinutes * 60000L)
                     + " expectedIsolation=" + expectedIsolation);
             if (clients != expectedClients
-                    || auto != expectedAuto
                     || timeout != expectedTimeoutMinutes * 60000L
-                    || isolation != expectedIsolation) {
+                    || (hasMethod(cfg, "isClientIsolationEnabled")
+                        && isolation != expectedIsolation)) {
                 Log.i(TAG, "SETTINGS_ADVANCED_VERIFY_MISMATCH");
             }
         } catch (Throwable t) {
@@ -671,6 +697,22 @@ final class AdvancedHotspotUi {
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    private static void showIsolationHelp(Context context) {
+        new AlertDialog.Builder(context)
+                .setTitle("Проверка изоляции клиентов")
+                .setMessage("Подключи к точке доступа два устройства.\n\n"
+                        + "1. Включи изоляцию и примени.\n"
+                        + "2. Убедись, что оба устройства имеют интернет.\n"
+                        + "3. Узнай локальный IP второго устройства.\n"
+                        + "4. С первого устройства попробуй ping IP второго.\n\n"
+                        + "При рабочей изоляции обмен между клиентами должен быть недоступен, "
+                        + "при этом интернет через точку доступа должен продолжать работать.\n\n"
+                        + "На Android 15 API 35 стандартного публичного API для этой настройки нет; "
+                        + "кнопка здесь применяет OEM-метод только если он реально есть и принимает значение.")
+                .setPositiveButton("Понятно", null)
+                .show();
     }
 
     private static void showError(Context context, String title, Throwable t) {
