@@ -35,6 +35,7 @@ jobs:
               s = s[:a] + s[b:]
           s = s.replace("        installSettingsUiHook(param.getClassLoader());\n        installSettingsUiHook(param.getClassLoader());",
                         "        installSettingsUiHook(param.getClassLoader());")
+          s = s.replace("                    installPermissionBypass(loader);\n", "")
           p.write_text(s)
           PY
       - name: Build APK
