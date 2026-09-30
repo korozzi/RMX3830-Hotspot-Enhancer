@@ -8,8 +8,8 @@ android {
         applicationId 'com.rmx3830.hotspot'
         minSdk 26
         targetSdk 35
-        versionCode 32
-        versionName '0.3.2'
+        versionCode 33
+        versionName '0.3.3'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -26,5 +26,5 @@ android {
     }
 }
 dependencies {
-    compileOnly 'io.github.libxposed:api:102.0.0'
+    compileOnly 'io.github.libxposed:api:101.0.0'
 }
