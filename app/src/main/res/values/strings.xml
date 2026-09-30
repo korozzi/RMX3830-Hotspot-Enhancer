@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">RMX3830 Hotspot Enhancer</string>
-    <string name="app_description">Functional hotspot extension for realme C51 on Android 15.</string>
+    <string name="app_name">Hotspot Manager</string>
+    <string name="app_description">Управление точкой доступа Wi‑Fi</string>
 </resources>
