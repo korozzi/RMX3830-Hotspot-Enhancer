@@ -59,6 +59,7 @@ public final class HotspotModule extends XposedModule {
         if (!"com.android.settings".equals(param.getPackageName())) return;
         note("SETTINGS_READY package=" + param.getPackageName());
         probe(param.getClassLoader(), SETTINGS_CLASSES, false);
+        installSettingsUiHook(param.getClassLoader());
     }
 
     private void installWifiClassLoaderProbe() {
@@ -152,6 +153,41 @@ public final class HotspotModule extends XposedModule {
             }
         } catch (Throwable t) {
             note("WIFI_SERVICE_SCAN_FAILED " + t.getClass().getSimpleName());
+        }
+    }
+
+    private void installSettingsUiHook(ClassLoader loader) {
+        if (settingsUiHookInstalled) return;
+        for (String className : SETTINGS_CLASSES) {
+            try {
+                Class<?> cls = Class.forName(className, false, loader);
+                Method target = null;
+                for (Method method : cls.getDeclaredMethods()) {
+                    if (!"onCreate".equals(method.getName())) continue;
+                    Class<?>[] types = method.getParameterTypes();
+                    if (types.length == 1 && types[0] == android.os.Bundle.class) {
+                        target = method;
+                        break;
+                    }
+                }
+                if (target == null) continue;
+                hook(target).intercept(chain -> {
+                    Object result = chain.proceed();
+                    try {
+                        AdvancedHotspotUi.inject(chain.getThisObject());
+                        note("SETTINGS_UI_ADDED");
+                    } catch (Throwable t) {
+                        note("SETTINGS_UI_ADD_FAILED " + t.getClass().getSimpleName());
+                    }
+                    return result;
+                });
+                settingsUiHookInstalled = true;
+                note("SETTINGS_UI_HOOK_READY " + className);
+                return;
+            } catch (Throwable t) {
+                note("SETTINGS_UI_HOOK_FAILED " + className + " "
+                    + t.getClass().getSimpleName());
+            }
         }
     }
 
