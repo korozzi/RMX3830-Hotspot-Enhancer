@@ -63,19 +63,11 @@ final class AdvancedHotspotUi {
 
     private static void showEditor(Context context) {
         try {
-            Object wifi = context.getSystemService(Context.WIFI_SERVICE);
-            if (wifi == null) throw new IllegalStateException("wifi_service_null");
-            Object config = invoke(wifi, "getSoftApConfiguration");
-            if (config == null) throw new IllegalStateException("softap_config_null");
-
-            int max = ((Number) invoke(config, "getMaxNumberOfClients")).intValue();
-            if (max <= 0) max = 10;
-            boolean hidden = (Boolean) invoke(config, "isHiddenSsid");
-            boolean autoOff = (Boolean) invoke(config, "isAutoShutdownEnabled");
-            boolean isolation = (Boolean) invoke(config, "isClientIsolationEnabled");
-            boolean optimization = (Boolean) invoke(config, "isBandOptimizationEnabled");
-            int band = ((Number) invoke(config, "getBand")).intValue();
-
+            // Do not read SoftApConfiguration before showing the dialog.
+            // On this Realme build some Settings/Wi-Fi framework calls can throw
+            // from the Settings process and previously prevented the dialog itself
+            // from opening. We read the live configuration only when the user taps
+            // "Применить".
             LinearLayout root = new LinearLayout(context);
             root.setOrientation(LinearLayout.VERTICAL);
             root.setPadding(48, 12, 48, 4);
@@ -84,7 +76,7 @@ final class AdvancedHotspotUi {
             EditText maxEdit = new EditText(context);
             maxEdit.setSingleLine(true);
             maxEdit.setInputType(InputType.TYPE_CLASS_NUMBER);
-            maxEdit.setText(Integer.toString(max));
+            maxEdit.setText("10");
             root.addView(maxEdit);
 
             root.addView(label(context, "Диапазон Wi‑Fi"));
@@ -96,15 +88,13 @@ final class AdvancedHotspotUi {
             bands.addView(keep);
             bands.addView(b2);
             bands.addView(b5);
-            if (band == BAND_2GHZ) b2.setChecked(true);
-            else if (band == BAND_5GHZ) b5.setChecked(true);
-            else keep.setChecked(true);
+            b2.setChecked(true);
             root.addView(bands);
 
-            CheckBox hiddenBox = check(context, "Скрытая сеть", hidden);
-            CheckBox autoBox = check(context, "Автоотключение при простое", autoOff);
-            CheckBox isolationBox = check(context, "Изоляция клиентов", isolation);
-            CheckBox optimizationBox = check(context, "Оптимизация диапазона", optimization);
+            CheckBox hiddenBox = check(context, "Скрытая сеть", false);
+            CheckBox autoBox = check(context, "Автоотключение при простое", true);
+            CheckBox isolationBox = check(context, "Изоляция клиентов", false);
+            CheckBox optimizationBox = check(context, "Оптимизация диапазона", true);
             root.addView(hiddenBox);
             root.addView(autoBox);
             root.addView(isolationBox);
@@ -131,20 +121,32 @@ final class AdvancedHotspotUi {
                                     : checked == 102
                                     ? BAND_5GHZ : 0;
 
+                            Object wifi = context.getSystemService(Context.WIFI_SERVICE);
+                            if (wifi == null) throw new IllegalStateException("wifi_service_null");
+                            Object config = invoke(wifi, "getSoftApConfiguration");
+                            if (config == null) {
+                                throw new IllegalStateException("softap_config_null");
+                            }
+
                             apply(wifi, config, clients, selectedBand,
                                     hiddenBox.isChecked(), autoBox.isChecked(),
                                     isolationBox.isChecked(), optimizationBox.isChecked());
                             dialog.dismiss();
                         } catch (Throwable t) {
+                            Throwable cause = t.getCause() != null ? t.getCause() : t;
                             Log.i(TAG, "SETTINGS_ADVANCED_APPLY_FAILED "
-                                    + t.getClass().getSimpleName());
+                                    + cause.getClass().getSimpleName() + ": "
+                                    + String.valueOf(cause.getMessage()));
                             maxEdit.setError("Не удалось применить");
                         }
                     }));
             dialog.show();
+            Log.i(TAG, "SETTINGS_ADVANCED_DIALOG_SHOWN");
         } catch (Throwable t) {
+            Throwable cause = t.getCause() != null ? t.getCause() : t;
             Log.i(TAG, "SETTINGS_ADVANCED_DIALOG_FAILED "
-                    + t.getClass().getSimpleName());
+                    + cause.getClass().getSimpleName() + ": "
+                    + String.valueOf(cause.getMessage()));
         }
     }
 
