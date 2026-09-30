@@ -2,7 +2,6 @@ package com.rmx3830.hotspot;
 
 import android.app.AlertDialog;
 import android.content.Context;
-import android.net.wifi.SoftApConfiguration;
 import android.text.InputType;
 import android.util.Log;
 import android.view.View;
@@ -19,6 +18,10 @@ import java.lang.reflect.Proxy;
 final class AdvancedHotspotUi {
     private static final String TAG = "RMX3830Hotspot";
     private static final String KEY = "rmx3830_hotspot_advanced";
+    // BAND_* fields are public only starting with API 36; this project targets API 35.
+    // Their stable framework values are 1 (2 GHz) and 2 (5 GHz).
+    private static final int BAND_2GHZ = 1;
+    private static final int BAND_5GHZ = 2;
 
     private AdvancedHotspotUi() {}
 
@@ -93,8 +96,8 @@ final class AdvancedHotspotUi {
             bands.addView(keep);
             bands.addView(b2);
             bands.addView(b5);
-            if (band == SoftApConfiguration.BAND_2GHZ) b2.setChecked(true);
-            else if (band == SoftApConfiguration.BAND_5GHZ) b5.setChecked(true);
+            if (band == BAND_2GHZ) b2.setChecked(true);
+            else if (band == BAND_5GHZ) b5.setChecked(true);
             else keep.setChecked(true);
             root.addView(bands);
 
@@ -124,9 +127,9 @@ final class AdvancedHotspotUi {
                             }
                             int checked = bands.getCheckedRadioButtonId();
                             int selectedBand = checked == 101
-                                    ? SoftApConfiguration.BAND_2GHZ
+                                    ? BAND_2GHZ
                                     : checked == 102
-                                    ? SoftApConfiguration.BAND_5GHZ : 0;
+                                    ? BAND_5GHZ : 0;
 
                             apply(wifi, config, clients, selectedBand,
                                     hiddenBox.isChecked(), autoBox.isChecked(),
@@ -161,7 +164,7 @@ final class AdvancedHotspotUi {
         call(builder, "setClientIsolationEnabled", new Class<?>[]{boolean.class}, isolation);
         call(builder, "setBandOptimizationEnabled",
                 new Class<?>[]{boolean.class}, optimization);
-        if (band == SoftApConfiguration.BAND_2GHZ || band == SoftApConfiguration.BAND_5GHZ) {
+        if (band == BAND_2GHZ || band == BAND_5GHZ) {
             call(builder, "setBand", new Class<?>[]{int.class}, band);
         }
 
