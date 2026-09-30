@@ -63,8 +63,9 @@ public final class HotspotModule extends XposedModule {
             hook(loadClass).intercept(chain -> {
                 Object result = chain.proceed();
                 try {
-                    String name = (String) chain.getArgs()[0];
-                    if (isWifiTarget(name) && result instanceof Class) {
+                    Object firstArg = chain.getArgs().get(0);
+                    String name = firstArg instanceof String ? (String) firstArg : null;
+                    if (name != null && isWifiTarget(name) && result instanceof Class) {
                         Class<?> cls = (Class<?>) result;
                         note("CLASS_LOADED_BY " + cls.getName()
                             + " loader=" + cls.getClassLoader());
