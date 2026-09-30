@@ -1,6 +1,6 @@
 id=rmx3830_hotspot_diagnostic
 name=RMX3830 Hotspot Diagnostic (Modern LSPosed)
-version=0.3.2
-versionCode=32
+version=0.3.3
+versionCode=33
 author=RMX3830 community
 description=Read-only hotspot diagnostics for realme C51 Android 15; packaged LSPosed APK
