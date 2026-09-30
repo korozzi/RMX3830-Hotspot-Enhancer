@@ -19,14 +19,11 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executor;
 
 final class AdvancedHotspotUi {
     private static final String TAG = "RMX3830Hotspot";
-    private static final String KEY = "rmx3830_hotspot_advanced";
     private static final long CLIENT_FORCE_DISCONNECT_DELAY_MS = 2500L;
 
     private AdvancedHotspotUi() {}
@@ -697,22 +694,6 @@ final class AdvancedHotspotUi {
         } catch (Throwable t) {
             return false;
         }
-    }
-
-    private static void showIsolationHelp(Context context) {
-        new AlertDialog.Builder(context)
-                .setTitle("Проверка изоляции клиентов")
-                .setMessage("Подключи к точке доступа два устройства.\n\n"
-                        + "1. Включи изоляцию и примени.\n"
-                        + "2. Убедись, что оба устройства имеют интернет.\n"
-                        + "3. Узнай локальный IP второго устройства.\n"
-                        + "4. С первого устройства попробуй ping IP второго.\n\n"
-                        + "При рабочей изоляции обмен между клиентами должен быть недоступен, "
-                        + "при этом интернет через точку доступа должен продолжать работать.\n\n"
-                        + "На Android 15 API 35 стандартного публичного API для этой настройки нет; "
-                        + "кнопка здесь применяет OEM-метод только если он реально есть и принимает значение.")
-                .setPositiveButton("Понятно", null)
-                .show();
     }
 
     private static void showError(Context context, String title, Throwable t) {
