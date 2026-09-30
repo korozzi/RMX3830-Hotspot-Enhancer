@@ -1,4 +1,4 @@
-name: Build Hotspot Manager
+name: Build RMX3830 Hotspot Enhancer
 on:
   push:
     branches: [main]
@@ -27,15 +27,15 @@ jobs:
         run: python3 scripts/package_magisk.py
       - name: Validate
         run: |
-          unzip -l dist/Hotspot-Manager-v0.7.0-Magisk.zip
+          unzip -l dist/RMX3830-Hotspot-Enhancer-v1.0.0-Magisk.zip
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep 'META-INF/xposed/'
       - uses: actions/upload-artifact@v4
         with:
-          name: Hotspot-Manager-APK-v0.7.0
+          name: RMX3830-Hotspot-Enhancer-APK-v1.0.0
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: Hotspot-Manager-Magisk-v0.7.0
-          path: dist/Hotspot-Manager-v0.7.0-Magisk.zip
+          name: RMX3830-Hotspot-Enhancer-Magisk-v1.0.0
+          path: dist/RMX3830-Hotspot-Enhancer-v1.0.0-Magisk.zip
           if-no-files-found: error
