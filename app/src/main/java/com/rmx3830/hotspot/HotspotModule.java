@@ -2,6 +2,7 @@ package com.rmx3830.hotspot;
 
 import android.os.Build;
 import android.util.Log;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.HashSet;
@@ -17,6 +18,7 @@ import io.github.libxposed.api.XposedModuleInterface;
 public final class HotspotModule extends XposedModule {
     private static final String TAG = "RMX3830Hotspot";
     private static final int HOOKS_PER_CLASS = 8;
+    private static final String WIFI_APEX_JAR = "/apex/com.android.wifi/javalib/service-wifi.jar";
     private static final String[] FRAMEWORK_CLASSES = {
         "android.net.wifi.SoftApConfiguration",
         "android.net.wifi.SoftApConfiguration$Builder",
@@ -32,6 +34,7 @@ public final class HotspotModule extends XposedModule {
     };
     private static final Set<String> OBSERVER_HOOKS = new HashSet<>();
     private static boolean classLoaderHookInstalled;
+    private static boolean wifiJarHookInstalled;
 
     @Override
     public void onModuleLoaded(XposedModuleInterface.ModuleLoadedParam param) {
@@ -47,6 +50,7 @@ public final class HotspotModule extends XposedModule {
         note("SYSTEM_SERVER_START classLoader=" + param.getClassLoader());
         probe(param.getClassLoader(), FRAMEWORK_CLASSES, true);
         installWifiClassLoaderProbe();
+        installWifiJarProbe(param.getClassLoader());
     }
 
     @Override
@@ -78,6 +82,89 @@ public final class HotspotModule extends XposedModule {
             note("CLASSLOADER_HOOK_READY");
         } catch (Throwable t) {
             note("CLASSLOADER_HOOK_FAILED " + t.getClass().getSimpleName());
+        }
+    }
+
+    private void installWifiJarProbe(ClassLoader systemServerLoader) {
+        if (wifiJarHookInstalled) return;
+        try {
+            Class<?> managerClass = Class.forName(
+                "com.android.server.SystemServiceManager", false, systemServerLoader);
+            Method target = null;
+            for (Method method : managerClass.getDeclaredMethods()) {
+                if (!"startServiceFromJar".equals(method.getName())) continue;
+                Class<?>[] types = method.getParameterTypes();
+                if (types.length == 2
+                        && types[0] == String.class
+                        && types[1] == String.class) {
+                    target = method;
+                    break;
+                }
+            }
+            if (target == null) {
+                note("WIFI_JAR_HOOK_FAILED method_missing");
+                return;
+            }
+            hook(target).intercept(chain -> {
+                Object[] args = chain.getArgs().toArray();
+                Object result = chain.proceed();
+                try {
+                    String path = args.length > 1 && args[1] instanceof String
+                        ? (String) args[1] : "";
+                    String className = args.length > 0 && args[0] instanceof String
+                        ? (String) args[0] : "";
+                    if (WIFI_APEX_JAR.equals(path) || path.contains("/com.android.wifi/")) {
+                        note("WIFI_JAR_STARTED class=" + className + " path=" + path);
+                        probeWifiServiceManager(chain.getThisObject());
+                    }
+                } catch (Throwable t) {
+                    note("WIFI_JAR_SCAN_FAILED " + t.getClass().getSimpleName());
+                }
+                return result;
+            });
+            wifiJarHookInstalled = true;
+            note("WIFI_JAR_HOOK_READY");
+        } catch (Throwable t) {
+            note("WIFI_JAR_HOOK_FAILED " + t.getClass().getSimpleName());
+        }
+    }
+
+    private void probeWifiServiceManager(Object manager) {
+        if (manager == null) return;
+        try {
+            Field servicesField = manager.getClass().getDeclaredField("mServices");
+            servicesField.setAccessible(true);
+            Object services = servicesField.get(manager);
+            if (!(services instanceof Iterable)) {
+                note("WIFI_SERVICES_FIELD_UNUSABLE");
+                return;
+            }
+            for (Object service : (Iterable<?>) services) {
+                if (service == null) continue;
+                Class<?> serviceClass = service.getClass();
+                String name = serviceClass.getName();
+                if (!name.startsWith("com.android.server.wifi.")) continue;
+                ClassLoader wifiLoader = serviceClass.getClassLoader();
+                note("WIFI_SERVICE_FOUND " + name + " loader=" + wifiLoader);
+                probeWifiClassLoader(wifiLoader);
+            }
+        } catch (Throwable t) {
+            note("WIFI_SERVICE_SCAN_FAILED " + t.getClass().getSimpleName());
+        }
+    }
+
+    private void probeWifiClassLoader(ClassLoader loader) {
+        if (loader == null) return;
+        for (String className : FRAMEWORK_CLASSES) {
+            if (!className.startsWith("com.android.server.wifi.")) continue;
+            try {
+                Class<?> cls = Class.forName(className, false, loader);
+                note("WIFI_CLASS_FOUND " + className + " loader=" + loader);
+                probeLoadedClass(cls);
+            } catch (Throwable t) {
+                note("WIFI_CLASS_MISSING " + className
+                    + " " + t.getClass().getSimpleName());
+            }
         }
     }
 
