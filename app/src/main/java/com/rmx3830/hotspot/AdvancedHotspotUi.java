@@ -28,42 +28,6 @@ final class AdvancedHotspotUi {
 
     private AdvancedHotspotUi() {}
 
-    static void inject(Object fragment) {
-        try {
-            Context context = (Context) invoke(fragment, "getContext");
-            if (context == null) return;
-            Object screen = invoke(fragment, "getPreferenceScreen");
-            if (screen == null) return;
-            Object existing = invoke(screen, "findPreference", KEY);
-            if (existing != null) return;
-
-            ClassLoader cl = fragment.getClass().getClassLoader();
-            Class<?> prefClass = Class.forName("androidx.preference.Preference", false, cl);
-            Constructor<?> ctor = prefClass.getConstructor(Context.class);
-            Object pref = ctor.newInstance(context);
-            invoke(pref, "setKey", KEY);
-            invoke(pref, "setTitle", "Расширенные настройки точки доступа");
-            invoke(pref, "setSummary",
-                    "Клиенты, белый/чёрный список, отключение, изоляция и автоотключение");
-
-            Class<?> listener = Class.forName(
-                    "androidx.preference.Preference$OnPreferenceClickListener", false, cl);
-            Object proxy = Proxy.newProxyInstance(cl, new Class<?>[]{listener},
-                    (p, method, args) -> {
-                        if ("onPreferenceClick".equals(method.getName())) {
-                            showEditor(context);
-                            return true;
-                        }
-                        return null;
-                    });
-            invoke(pref, "setOnPreferenceClickListener", proxy);
-            invoke(screen, "addPreference", pref);
-            Log.i(TAG, "SETTINGS_ADVANCED_UI_ADDED");
-        } catch (Throwable t) {
-            Log.i(TAG, "SETTINGS_ADVANCED_UI_FAILED " + t.getClass().getSimpleName());
-        }
-    }
-
     static void open(Context context) { showEditor(context); }
 
     private static void showEditor(Context context) {
@@ -133,11 +97,6 @@ final class AdvancedHotspotUi {
                 isolationBox.setText("Изоляция клиентов (не поддерживается этой сборкой)");
             }
             content.addView(isolationBox);
-
-            Button isolationHelp = new Button(context);
-            isolationHelp.setText("Как проверить изоляцию");
-            isolationHelp.setOnClickListener(v -> showIsolationHelp(context));
-            content.addView(isolationHelp);
 
             ScrollView scroll = new ScrollView(context);
             scroll.setFillViewport(true);
