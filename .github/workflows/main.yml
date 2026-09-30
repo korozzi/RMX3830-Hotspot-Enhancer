@@ -21,6 +21,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+      - name: Clean generated Settings hook source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/rmx3830/hotspot/HotspotModule.java")
+          s = p.read_text()
+          marker = "    private void installSettingsUiHook(ClassLoader settingsLoader) {"
+          second = "    private void installSettingsUiHook(ClassLoader loader) {"
+          a = s.find(marker)
+          b = s.find(second, a + 1)
+          if a >= 0 and b > a:
+              s = s[:a] + s[b:]
+          s = s.replace("        installSettingsUiHook(param.getClassLoader());\n        installSettingsUiHook(param.getClassLoader());",
+                        "        installSettingsUiHook(param.getClassLoader());")
+          p.write_text(s)
+          PY
       - name: Build APK
         run: gradle --no-daemon --stacktrace :app:assembleDebug
       - name: Build Magisk ZIP
