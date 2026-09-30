@@ -2,7 +2,7 @@ from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 ROOT = Path(__file__).resolve().parents[1]
 APK = ROOT / "app/build/outputs/apk/debug/app-debug.apk"
-OUT = ROOT / "dist/Hotspot-Manager-v0.7.0-Magisk.zip"
+OUT = ROOT / "dist/RMX3830-Hotspot-Enhancer-v1.0.0-Magisk.zip"
 if not APK.exists():
     raise SystemExit("APK missing")
 with ZipFile(APK) as z:
@@ -15,7 +15,7 @@ items = {
     "service.sh": ROOT / "magisk/service.sh",
     "uninstall.sh": ROOT / "magisk/uninstall.sh",
     "customize.sh": ROOT / "magisk/customize.sh",
-    "system/app/RMX3830HotspotDiagnostic/base.apk": APK,
+    "system/app/RMX3830HotspotEnhancer/base.apk": APK,
 }
 OUT.parent.mkdir(parents=True, exist_ok=True)
 with ZipFile(OUT, "w", ZIP_DEFLATED) as z:
