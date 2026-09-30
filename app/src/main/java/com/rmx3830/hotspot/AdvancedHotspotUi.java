@@ -299,7 +299,7 @@ final class AdvancedHotspotUi {
             add.setText("Добавить MAC-адрес");
             box.addView(add);
 
-            AlertDialog dialog = new AlertDialog.Builder(context)
+            final AlertDialog dialog = new AlertDialog.Builder(context)
                     .setTitle("Белый список")
                     .setView(box)
                     .setNegativeButton("Отмена", null)
@@ -313,16 +313,18 @@ final class AdvancedHotspotUi {
                 }
             }));
 
-            dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                    .setOnClickListener(v -> {
-                        try {
-                            applyClientLists(wifi, enabledValue(enable), allowed,
-                                    copyList(invoke(cfg, "getBlockedClientList")));
-                            dialog.dismiss();
-                        } catch (Throwable t) {
-                            showError(context, "Белый список", t);
-                        }
-                    }));
+            dialog.setOnShowListener(d -> {
+                Button applyButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                applyButton.setOnClickListener(v -> {
+                    try {
+                        applyClientLists(wifi, enabledValue(enable), allowed,
+                                copyList(invoke(cfg, "getBlockedClientList")));
+                        dialog.dismiss();
+                    } catch (Throwable t) {
+                        showError(context, "Белый список", t);
+                    }
+                });
+            });
             dialog.show();
         } catch (Throwable t) {
             showError(context, "Белый список", t);
@@ -351,7 +353,7 @@ final class AdvancedHotspotUi {
             add.setText("Добавить MAC-адрес");
             box.addView(add);
 
-            AlertDialog dialog = new AlertDialog.Builder(context)
+            final AlertDialog dialog = new AlertDialog.Builder(context)
                     .setTitle("Заблокированные устройства")
                     .setView(box)
                     .setNegativeButton("Отмена", null)
@@ -365,19 +367,21 @@ final class AdvancedHotspotUi {
                 }
             }));
 
-            dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                    .setOnClickListener(v -> {
-                        try {
-                            List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
-                            allowed.removeIf(x -> containsMac(blocked, macString(x)));
-                            applyClientLists(wifi,
-                                    readBoolean(cfg, "isClientControlByUserEnabled", false),
-                                    allowed, blocked);
-                            dialog.dismiss();
-                        } catch (Throwable t) {
-                            showError(context, "Блокировка", t);
-                        }
-                    }));
+            dialog.setOnShowListener(d -> {
+                Button applyButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                applyButton.setOnClickListener(v -> {
+                    try {
+                        List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
+                        allowed.removeIf(x -> containsMac(blocked, macString(x)));
+                        applyClientLists(wifi,
+                                readBoolean(cfg, "isClientControlByUserEnabled", false),
+                                allowed, blocked);
+                        dialog.dismiss();
+                    } catch (Throwable t) {
+                        showError(context, "Блокировка", t);
+                    }
+                });
+            });
             dialog.show();
         } catch (Throwable t) {
             showError(context, "Блокировка", t);
