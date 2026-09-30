@@ -3,13 +3,17 @@ package com.rmx3830.hotspot;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.text.InputType;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.ScrollView;
+import android.view.Gravity;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 import java.lang.reflect.Constructor;
@@ -42,7 +46,7 @@ final class AdvancedHotspotUi {
             invoke(pref, "setKey", KEY);
             invoke(pref, "setTitle", "Расширенные настройки точки доступа");
             invoke(pref, "setSummary",
-                    "Лимит клиентов, диапазон, скрытая сеть, автоотключение и изоляция");
+                    "Лимит клиентов и настраиваемое время автоотключения");
 
             Class<?> listener = Class.forName(
                     "androidx.preference.Preference$OnPreferenceClickListener", false, cl);
@@ -64,36 +68,57 @@ final class AdvancedHotspotUi {
 
     private static void showEditor(Context context) {
         try {
-            LinearLayout root = new LinearLayout(context);
-            root.setOrientation(LinearLayout.VERTICAL);
-            root.setPadding(48, 8, 48, 4);
+            LinearLayout content = new LinearLayout(context);
+            content.setOrientation(LinearLayout.VERTICAL);
+            content.setPadding(48, 8, 48, 8);
 
-            root.addView(label(context, "Максимум клиентов (1–10)"));
+            content.addView(label(context, "Максимум клиентов (1–10)"));
             EditText maxEdit = new EditText(context);
             maxEdit.setSingleLine(true);
             maxEdit.setInputType(InputType.TYPE_CLASS_NUMBER);
             maxEdit.setText("10");
-            root.addView(maxEdit);
+            content.addView(maxEdit);
 
-            root.addView(label(context, "Отключать после простоя (минуты)"));
+            content.addView(label(context, "Отключать после простоя (минуты)"));
             EditText timeoutEdit = new EditText(context);
             timeoutEdit.setSingleLine(true);
             timeoutEdit.setInputType(InputType.TYPE_CLASS_NUMBER);
             timeoutEdit.setText("10");
-            root.addView(timeoutEdit);
+            content.addView(timeoutEdit);
 
             CheckBox autoBox = check(context, "Автоотключение при простое", true);
-            root.addView(autoBox);
+            content.addView(autoBox);
+
+            ScrollView scroll = new ScrollView(context);
+            scroll.setFillViewport(true);
+            scroll.addView(content);
+
+            LinearLayout container = new LinearLayout(context);
+            container.setOrientation(LinearLayout.VERTICAL);
+            container.addView(scroll, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+
+            LinearLayout buttons = new LinearLayout(context);
+            buttons.setOrientation(LinearLayout.HORIZONTAL);
+            buttons.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            Button cancel = new Button(context);
+            cancel.setText("Отмена");
+            Button applyButton = new Button(context);
+            applyButton.setText("Применить");
+            buttons.addView(cancel, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            buttons.addView(applyButton, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            container.addView(buttons, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
             AlertDialog dialog = new AlertDialog.Builder(context)
                     .setTitle("RMX3830 Hotspot")
-                    .setView(root)
-                    .setNegativeButton("Отмена", null)
-                    .setPositiveButton("Применить", null)
+                    .setView(container)
                     .create();
 
-            dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                    .setOnClickListener(v -> {
+            cancel.setOnClickListener(v -> dialog.dismiss());
+            applyButton.setOnClickListener(v -> {
                         try {
                             int clients = Integer.parseInt(maxEdit.getText().toString().trim());
                             int timeoutMinutes = Integer.parseInt(timeoutEdit.getText().toString().trim());
@@ -112,6 +137,7 @@ final class AdvancedHotspotUi {
                             if (config == null) throw new IllegalStateException("softap_config_null");
 
                             apply(wifi, config, clients, autoBox.isChecked(), timeoutMinutes);
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> verify(wifi), 400);
                             dialog.dismiss();
                         } catch (Throwable t) {
                             Throwable cause = t.getCause() != null ? t.getCause() : t;
@@ -120,7 +146,7 @@ final class AdvancedHotspotUi {
                                     + String.valueOf(cause.getMessage()));
                             maxEdit.setError("Не удалось применить");
                         }
-                    }));
+                    });
             dialog.show();
             Log.i(TAG, "SETTINGS_ADVANCED_DIALOG_SHOWN");
         } catch (Throwable t) {
@@ -162,6 +188,22 @@ final class AdvancedHotspotUi {
                 + " autoOff=" + autoOff + " timeoutMin=" + timeoutMinutes);
     }
 
+
+    private static void verify(Object wifi) {
+        try {
+            Object cfg = invoke(wifi, "getSoftApConfiguration");
+            Object clients = invoke(cfg, "getMaxNumberOfClients");
+            Object auto = invoke(cfg, "isAutoShutdownEnabled");
+            Object timeout = invoke(cfg, "getShutdownTimeoutMillis");
+            Log.i(TAG, "SETTINGS_ADVANCED_VERIFY clients=" + clients
+                    + " autoOff=" + auto + " timeoutMs=" + timeout);
+        } catch (Throwable t) {
+            Throwable cause = t.getCause() != null ? t.getCause() : t;
+            Log.i(TAG, "SETTINGS_ADVANCED_VERIFY_FAILED "
+                    + cause.getClass().getSimpleName() + ": "
+                    + String.valueOf(cause.getMessage()));
+        }
+    }
 
     private static TextView label(Context c, String text) {
         TextView v = new TextView(c);
