@@ -12,8 +12,8 @@ import io.github.libxposed.api.XposedModule;
 import io.github.libxposed.api.XposedModuleInterface;
 
 /**
- * Read-only diagnostic Modern Xposed module.
- * Never changes hotspot settings or logs SSID, MAC addresses or passphrases.
+ * Modern Xposed hotspot extension module.
+ * Only changes hotspot settings when the user explicitly applies values in the injected Settings editor; never logs SSID, MAC addresses or passphrases.
  */
 public final class HotspotModule extends XposedModule {
     private static final String TAG = "RMX3830Hotspot";
@@ -35,6 +35,7 @@ public final class HotspotModule extends XposedModule {
     private static final Set<String> OBSERVER_HOOKS = new HashSet<>();
     private static boolean classLoaderHookInstalled;
     private static boolean wifiJarHookInstalled;
+    private static boolean settingsUiHookInstalled;
 
     @Override
     public void onModuleLoaded(XposedModuleInterface.ModuleLoadedParam param) {
@@ -58,6 +59,41 @@ public final class HotspotModule extends XposedModule {
         if (!"com.android.settings".equals(param.getPackageName())) return;
         note("SETTINGS_READY package=" + param.getPackageName());
         probe(param.getClassLoader(), SETTINGS_CLASSES, false);
+        installSettingsUiHook(param.getClassLoader());
+    }
+
+    private void installSettingsUiHook(ClassLoader settingsLoader) {
+        if (settingsUiHookInstalled) return;
+        try {
+            Class<?> settingsClass = Class.forName(
+                "com.android.settings.wifi.tether.WifiTetherSettings", false, settingsLoader);
+            Method target = null;
+            for (Method method : settingsClass.getDeclaredMethods()) {
+                if (!"onCreate".equals(method.getName())) continue;
+                Class<?>[] types = method.getParameterTypes();
+                if (types.length == 1 && types[0] == android.os.Bundle.class) {
+                    target = method;
+                    break;
+                }
+            }
+            if (target == null) {
+                note("SETTINGS_UI_HOOK_FAILED onCreate_missing");
+                return;
+            }
+            hook(target).intercept(chain -> {
+                Object result = chain.proceed();
+                try {
+                    AdvancedHotspotUi.inject(chain.getThisObject());
+                } catch (Throwable t) {
+                    note("SETTINGS_UI_INJECT_FAILED " + t.getClass().getSimpleName());
+                }
+                return result;
+            });
+            settingsUiHookInstalled = true;
+            note("SETTINGS_UI_HOOK_READY");
+        } catch (Throwable t) {
+            note("SETTINGS_UI_HOOK_FAILED " + t.getClass().getSimpleName());
+        }
     }
 
     private void installWifiClassLoaderProbe() {
