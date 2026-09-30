@@ -235,9 +235,6 @@ public final class HotspotModule extends XposedModule {
             try {
                 Class<?> cls = Class.forName(className, false, loader);
                 note("WIFI_CLASS_FOUND " + className + " loader=" + loader);
-                if ("com.android.server.wifi.WifiServiceImpl".equals(className)) {
-                    installPermissionBypass(loader);
-                }
                 probeLoadedClass(cls);
             } catch (Throwable t) {
                 note("WIFI_CLASS_MISSING " + className
