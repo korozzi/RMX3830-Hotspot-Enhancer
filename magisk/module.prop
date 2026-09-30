@@ -1,6 +1,6 @@
 id=rmx3830_hotspot_diagnostic
-name=RMX3830 Hotspot Enhancer (Modern LSPosed)
-version=0.6.0
-versionCode 60
+name=Hotspot Manager
+version=0.7.0
+versionCode 70
 author=RMX3830 community
-description=Functional hotspot extension for realme C51 Android 15; client management and Soft AP controls
+description=Статус: проверка после загрузки
