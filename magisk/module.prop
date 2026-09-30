@@ -1,6 +1,6 @@
 id=rmx3830_hotspot_diagnostic
-name=Hotspot Manager
-version=0.7.0
-versionCode 70
+name=RMX3830 Hotspot Enhancer
+version=1.0.0
+versionCode 100
 author=Hotspot Manager
-description=Статус: проверка после загрузки
+description=Расширенное управление точкой доступа через системные настройки
