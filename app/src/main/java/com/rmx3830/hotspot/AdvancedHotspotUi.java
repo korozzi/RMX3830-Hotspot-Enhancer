@@ -28,6 +28,53 @@ final class AdvancedHotspotUi {
 
     private AdvancedHotspotUi() {}
 
+    private static final String PREF_KEY = "rmx3830_hotspot_advanced";
+
+    static void inject(Object fragment) {
+        if (fragment == null) return;
+        try {
+            Context context = (Context) invoke(fragment, "getContext");
+            if (context == null) return;
+            ClassLoader loader = fragment.getClass().getClassLoader();
+            Class<?> preferenceClass = Class.forName(
+                    "androidx.preference.Preference", false, loader);
+            Object screen = invoke(fragment, "getPreferenceScreen");
+            if (screen == null) return;
+            Object existing = invoke(screen, "findPreference", PREF_KEY);
+            if (existing != null) return;
+
+            Constructor<?> ctor = preferenceClass.getConstructor(Context.class);
+            Object pref = ctor.newInstance(context);
+            invoke(pref, "setKey", PREF_KEY);
+            invoke(pref, "setTitle", "Расширенные настройки точки доступа");
+            invoke(pref, "setSummary",
+                    "Лимит клиентов, устройства, списки доступа, отключение и изоляция");
+            invoke(pref, "setOrder", 999);
+
+            Class<?> listenerClass = Class.forName(
+                    "androidx.preference.Preference$OnPreferenceClickListener", false, loader);
+            Object listener = Proxy.newProxyInstance(loader,
+                    new Class<?>[] { listenerClass },
+                    (proxy, method, args) -> {
+                        if ("onPreferenceClick".equals(method.getName())) {
+                            showEditor(context);
+                            return true;
+                        }
+                        return null;
+                    });
+            invoke(pref, "setOnPreferenceClickListener", listener);
+            Object added = invoke(screen, "addPreference", pref);
+            note("SETTINGS_UI_ADDED result=" + String.valueOf(added));
+        } catch (Throwable t) {
+            note("SETTINGS_UI_INJECT_FAILED " + t.getClass().getSimpleName()
+                    + ": " + String.valueOf(t.getMessage()));
+        }
+    }
+
+    private static void note(String message) {
+        try { Log.i(TAG, message); } catch (Throwable ignored) { }
+    }
+
     static void open(Context context) { showEditor(context); }
 
     private static void showEditor(Context context) {
