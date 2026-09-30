@@ -68,6 +68,22 @@ final class AdvancedHotspotUi {
 
     private static void showEditor(Context context) {
         try {
+            Object wifi = context.getSystemService(Context.WIFI_SERVICE);
+            if (wifi == null) throw new IllegalStateException("wifi_service_null");
+            Object current = invoke(wifi, "getSoftApConfiguration");
+            if (current == null) throw new IllegalStateException("softap_config_null");
+
+            int storedClients = ((Number) invoke(current, "getMaxNumberOfClients")).intValue();
+            long storedTimeout = ((Number) invoke(current, "getShutdownTimeoutMillis")).longValue();
+            boolean storedAuto = (Boolean) invoke(current, "isAutoShutdownEnabled");
+
+            // 0 means framework-managed hardware maximum. The phone reports 10
+            // as its hardware/resource maximum, so use 10 as the editable value.
+            int initialClients = storedClients > 0 ? Math.min(storedClients, 10) : 10;
+            int initialTimeout = storedTimeout > 0
+                    ? (int) Math.max(1, Math.min(1440, storedTimeout / 60000L))
+                    : 10;
+
             LinearLayout content = new LinearLayout(context);
             content.setOrientation(LinearLayout.VERTICAL);
             content.setPadding(48, 8, 48, 8);
@@ -76,17 +92,20 @@ final class AdvancedHotspotUi {
             EditText maxEdit = new EditText(context);
             maxEdit.setSingleLine(true);
             maxEdit.setInputType(InputType.TYPE_CLASS_NUMBER);
-            maxEdit.setText("10");
+            maxEdit.setText(String.valueOf(initialClients));
             content.addView(maxEdit);
 
             content.addView(label(context, "Отключать после простоя (минуты)"));
             EditText timeoutEdit = new EditText(context);
             timeoutEdit.setSingleLine(true);
             timeoutEdit.setInputType(InputType.TYPE_CLASS_NUMBER);
-            timeoutEdit.setText("10");
+            timeoutEdit.setText(String.valueOf(initialTimeout));
             content.addView(timeoutEdit);
 
-            CheckBox autoBox = check(context, "Автоотключение при простое", true);
+            // Auto-shutdown is already exposed by Realme UI. We only use its
+            // current state; the custom UI controls the timeout value.
+            CheckBox autoBox = check(context, "Автоотключение включено в системе", storedAuto);
+            autoBox.setEnabled(false);
             content.addView(autoBox);
 
             ScrollView scroll = new ScrollView(context);
@@ -131,13 +150,12 @@ final class AdvancedHotspotUi {
                                 return;
                             }
 
-                            Object wifi = context.getSystemService(Context.WIFI_SERVICE);
-                            if (wifi == null) throw new IllegalStateException("wifi_service_null");
                             Object config = invoke(wifi, "getSoftApConfiguration");
                             if (config == null) throw new IllegalStateException("softap_config_null");
 
                             apply(wifi, config, clients, autoBox.isChecked(), timeoutMinutes);
-                            new Handler(Looper.getMainLooper()).postDelayed(() -> verify(wifi), 400);
+                            new Handler(Looper.getMainLooper()).postDelayed(
+                                    () -> verifyAndLog(wifi, clients, autoBox.isChecked(), timeoutMinutes), 500);
                             dialog.dismiss();
                         } catch (Throwable t) {
                             Throwable cause = t.getCause() != null ? t.getCause() : t;
@@ -189,14 +207,22 @@ final class AdvancedHotspotUi {
     }
 
 
-    private static void verify(Object wifi) {
+    private static void verifyAndLog(Object wifi, int expectedClients,
+            boolean expectedAuto, int expectedTimeoutMinutes) {
         try {
             Object cfg = invoke(wifi, "getSoftApConfiguration");
-            Object clients = invoke(cfg, "getMaxNumberOfClients");
-            Object auto = invoke(cfg, "isAutoShutdownEnabled");
-            Object timeout = invoke(cfg, "getShutdownTimeoutMillis");
+            int clients = ((Number) invoke(cfg, "getMaxNumberOfClients")).intValue();
+            boolean auto = (Boolean) invoke(cfg, "isAutoShutdownEnabled");
+            long timeout = ((Number) invoke(cfg, "getShutdownTimeoutMillis")).longValue();
             Log.i(TAG, "SETTINGS_ADVANCED_VERIFY clients=" + clients
-                    + " autoOff=" + auto + " timeoutMs=" + timeout);
+                    + " autoOff=" + auto + " timeoutMs=" + timeout
+                    + " expectedClients=" + expectedClients
+                    + " expectedTimeoutMs=" + (expectedTimeoutMinutes * 60000L));
+            if (clients != expectedClients
+                    || auto != expectedAuto
+                    || timeout != expectedTimeoutMinutes * 60000L) {
+                Log.i(TAG, "SETTINGS_ADVANCED_VERIFY_MISMATCH");
+            }
         } catch (Throwable t) {
             Throwable cause = t.getCause() != null ? t.getCause() : t;
             Log.i(TAG, "SETTINGS_ADVANCED_VERIFY_FAILED "
