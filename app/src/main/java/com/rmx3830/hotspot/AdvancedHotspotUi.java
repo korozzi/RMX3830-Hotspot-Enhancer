@@ -9,6 +9,7 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
+import android.widget.ScrollView;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 import java.lang.reflect.Constructor;
@@ -100,9 +101,15 @@ final class AdvancedHotspotUi {
             root.addView(isolationBox);
             root.addView(optimizationBox);
 
+            // The content is taller than the available dialog height on this Realme UI.
+            // Without a ScrollView the action buttons are pushed below the visible area.
+            ScrollView scroll = new ScrollView(context);
+            scroll.setFillViewport(true);
+            scroll.addView(root);
+
             AlertDialog dialog = new AlertDialog.Builder(context)
                     .setTitle("RMX3830 Hotspot")
-                    .setView(root)
+                    .setView(scroll)
                     .setNegativeButton("Отмена", null)
                     .setPositiveButton("Применить", null)
                     .create();
