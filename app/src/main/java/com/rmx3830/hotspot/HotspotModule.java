@@ -47,7 +47,7 @@ public final class HotspotModule extends XposedModule {
     @Override
     public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
         if (!"com.android.settings".equals(param.getPackageName())) return;
-        note("SETTINGS_READY process=" + param.getProcessName());
+        note("SETTINGS_READY package=" + param.getPackageName());
         probe(param.getClassLoader(), SETTINGS_CLASSES, false);
     }
 
