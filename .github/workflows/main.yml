@@ -1,129 +1,41 @@
-name: Build RMX3830 Hotspot Enhancer
-
+name: Build RMX3830 Hotspot Diagnostic
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   build:
-    name: Build APK and Magisk module
     runs-on: ubuntu-latest
-
+    timeout-minutes: 25
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
-
-      - name: Show project information
-        run: |
-          echo "=== Java ==="
-          java -version
-          echo
-          echo "=== Gradle ==="
-          ./gradlew --version
-          echo
-          echo "=== Project files ==="
-          find . -maxdepth 3 -type f | sort | head -300
-
-      - name: List Gradle tasks
-        run: |
-          ./gradlew tasks --all | tee gradle-tasks.txt
-
-      - name: Build Android APK
-        run: |
-          ./gradlew assembleDebug --stacktrace
-
-      - name: Build Magisk module
-        shell: bash
-        run: |
-          set -e
-
-          TASK=""
-
-          if grep -qE '^buildMagiskModule\b' gradle-tasks.txt; then
-            TASK="buildMagiskModule"
-          elif grep -qE '^packageMagisk\b' gradle-tasks.txt; then
-            TASK="packageMagisk"
-          elif grep -qE '^magiskModule\b' gradle-tasks.txt; then
-            TASK="magiskModule"
-          elif grep -qE '^buildMagisk\b' gradle-tasks.txt; then
-            TASK="buildMagisk"
-          fi
-
-          if [ -n "$TASK" ]; then
-            echo "Found Magisk task: $TASK"
-            ./gradlew "$TASK" --stacktrace
-          else
-            echo "No dedicated Magisk Gradle task was found."
-            echo "APK build will still be uploaded."
-          fi
-
-      - name: Collect build outputs
-        shell: bash
-        run: |
-          set -e
-
-          mkdir -p build-artifacts
-
-          echo "=== APK files ==="
-          find . -type f -name "*.apk" -not -path "./.gradle/*" -print
-
-          echo
-          echo "=== ZIP files ==="
-          find . -type f -name "*.zip" -not -path "./.gradle/*" -print
-
-          find . -type f -name "*.apk" \
-            -not -path "./.gradle/*" \
-            -exec cp {} build-artifacts/ \; || true
-
-          find . -type f -name "*.zip" \
-            -not -path "./.gradle/*" \
-            -not -path "./build-artifacts/*" \
-            -exec cp {} build-artifacts/ \; || true
-
-          echo
-          echo "=== Collected artifacts ==="
-          ls -lah build-artifacts || true
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 35
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          name: RMX3830-Hotspot-Enhancer-APK
-          path: build-artifacts/*.apk
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Upload Magisk ZIP
-        uses: actions/upload-artifact@v4
+          gradle-version: '8.7'
+      - name: Build APK
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Build Magisk ZIP
+        run: python3 scripts/package_magisk.py
+      - name: Validate
+        run: |
+          unzip -l dist/RMX3830-Hotspot-Diagnostic-v0.3.2-Magisk.zip
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep 'META-INF/xposed/'
+      - uses: actions/upload-artifact@v4
         with:
-          name: RMX3830-Hotspot-Enhancer-Magisk
-          path: build-artifacts/*.zip
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Upload build report
-        if: always()
-        uses: actions/upload-artifact@v4
+          name: RMX3830-LSPosed-APK-v0.3.2
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
         with:
-          name: RMX3830-Hotspot-Enhancer-Build-Report
-          path: |
-            gradle-tasks.txt
-            build-artifacts/
-          if-no-files-found: warn
-          retention-days: 30
+          name: RMX3830-Magisk-ZIP-v0.3.2
+          path: dist/RMX3830-Hotspot-Diagnostic-v0.3.2-Magisk.zip
+          if-no-files-found: error

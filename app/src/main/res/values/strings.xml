@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">RMX3830 Hotspot Diagnostic</string>
+    <string name="app_description">Read-only hotspot diagnostic hooks for realme C51 on Android 15. No UI modifications yet.</string>
+</resources>
