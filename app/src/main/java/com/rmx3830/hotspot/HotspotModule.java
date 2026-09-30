@@ -36,8 +36,6 @@ public final class HotspotModule extends XposedModule {
     private static boolean classLoaderHookInstalled;
     private static boolean wifiJarHookInstalled;
     private static boolean settingsUiHookInstalled;
-    private static boolean permissionHookInstalled;
-    private static int trustedUid = -1;
 
     @Override
     public void onModuleLoaded(XposedModuleInterface.ModuleLoadedParam param) {
@@ -154,77 +152,6 @@ public final class HotspotModule extends XposedModule {
             }
         } catch (Throwable t) {
             note("WIFI_SERVICE_SCAN_FAILED " + t.getClass().getSimpleName());
-        }
-    }
-
-    private void resolveTrustedUid(Object manager) {
-        if (trustedUid > 0 || manager == null) return;
-        try {
-            Field contextField = null;
-            for (Class<?> c = manager.getClass(); c != null; c = c.getSuperclass()) {
-                try {
-                    contextField = c.getDeclaredField("mContext");
-                    break;
-                } catch (NoSuchFieldException ignored) { }
-            }
-            if (contextField == null) return;
-            contextField.setAccessible(true);
-            Object context = contextField.get(manager);
-            if (!(context instanceof android.content.Context)) return;
-            Object pm = ((android.content.Context) context).getPackageManager();
-            Method getUid = pm.getClass().getMethod("getPackageUid", String.class, int.class);
-            trustedUid = ((Number) getUid.invoke(pm, "com.rmx3830.hotspot", 0)).intValue();
-            note("STANDALONE_APP_UID=" + trustedUid);
-        } catch (Throwable t) {
-            note("STANDALONE_APP_UID_FAILED " + t.getClass().getSimpleName());
-        }
-    }
-
-    private void installPermissionBypass(ClassLoader loader) {
-        if (permissionHookInstalled || trustedUid <= 0) return;
-        try {
-            Class<?> util = Class.forName(
-                    "com.android.server.wifi.WifiPermissionsUtil", false, loader);
-            int count = 0;
-            for (Method method : util.getDeclaredMethods()) {
-                String name = method.getName();
-                Class<?>[] p = method.getParameterTypes();
-                if (("checkConfigOverridePermission".equals(name)
-                        || "checkNetworkSettingsPermission".equals(name))
-                        && p.length == 1 && p[0] == int.class) {
-                    hook(method).intercept(chain -> {
-                        Object arg = chain.getArgs().get(0);
-                        if (arg instanceof Integer && ((Integer) arg) == trustedUid) {
-                            return true;
-                        }
-                        return chain.proceed();
-                    });
-                    count++;
-                }
-            }
-
-            Class<?> service = Class.forName(
-                    "com.android.server.wifi.WifiServiceImpl", false, loader);
-            for (Method method : service.getDeclaredMethods()) {
-                if (!"checkNetworkSettingsPermission".equals(method.getName())) continue;
-                Class<?>[] p = method.getParameterTypes();
-                if (p.length == 2 && p[0] == int.class && p[1] == int.class) {
-                    hook(method).intercept(chain -> {
-                        Object uid = chain.getArgs().get(1);
-                        if (uid instanceof Integer && ((Integer) uid) == trustedUid) {
-                            return true;
-                        }
-                        return chain.proceed();
-                    });
-                    count++;
-                }
-            }
-            permissionHookInstalled = count > 0;
-            note("STANDALONE_PERMISSION_HOOK_READY count=" + count
-                    + " uid=" + trustedUid);
-        } catch (Throwable t) {
-            note("STANDALONE_PERMISSION_HOOK_FAILED "
-                    + t.getClass().getSimpleName());
         }
     }
 
