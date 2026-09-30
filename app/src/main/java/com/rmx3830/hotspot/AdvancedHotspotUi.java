@@ -75,6 +75,13 @@ final class AdvancedHotspotUi {
             maxEdit.setText("10");
             root.addView(maxEdit);
 
+            root.addView(label(context, "Отключать после простоя (минуты)"));
+            EditText timeoutEdit = new EditText(context);
+            timeoutEdit.setSingleLine(true);
+            timeoutEdit.setInputType(InputType.TYPE_CLASS_NUMBER);
+            timeoutEdit.setText("10");
+            root.addView(timeoutEdit);
+
             CheckBox autoBox = check(context, "Автоотключение при простое", true);
             root.addView(autoBox);
 
@@ -89,8 +96,13 @@ final class AdvancedHotspotUi {
                     .setOnClickListener(v -> {
                         try {
                             int clients = Integer.parseInt(maxEdit.getText().toString().trim());
+                            int timeoutMinutes = Integer.parseInt(timeoutEdit.getText().toString().trim());
                             if (clients < 1 || clients > 10) {
                                 maxEdit.setError("1–10");
+                                return;
+                            }
+                            if (timeoutMinutes < 1 || timeoutMinutes > 1440) {
+                                timeoutEdit.setError("1–1440 минут");
                                 return;
                             }
 
@@ -99,7 +111,7 @@ final class AdvancedHotspotUi {
                             Object config = invoke(wifi, "getSoftApConfiguration");
                             if (config == null) throw new IllegalStateException("softap_config_null");
 
-                            apply(wifi, config, clients, autoBox.isChecked());
+                            apply(wifi, config, clients, autoBox.isChecked(), timeoutMinutes);
                             dialog.dismiss();
                         } catch (Throwable t) {
                             Throwable cause = t.getCause() != null ? t.getCause() : t;
@@ -120,7 +132,7 @@ final class AdvancedHotspotUi {
     }
 
     private static void apply(Object wifi, Object current, int clients,
-            boolean autoOff) throws Exception {
+            boolean autoOff, int timeoutMinutes) throws Exception {
         Class<?> configClass = current.getClass();
         Class<?> builderClass = Class.forName(
                 "android.net.wifi.SoftApConfiguration$Builder", false,
@@ -133,6 +145,8 @@ final class AdvancedHotspotUi {
         // band, hidden SSID, or Realme's compatibility setting.
         call(builder, "setMaxNumberOfClients", new Class<?>[]{int.class}, clients);
         call(builder, "setAutoShutdownEnabled", new Class<?>[]{boolean.class}, autoOff);
+        call(builder, "setShutdownTimeoutMillis", new Class<?>[]{long.class},
+                timeoutMinutes * 60_000L);
 
         Object result = invoke(builder, "build");
         Method setter = findMethod(wifi.getClass(), "setSoftApConfiguration", 1);
@@ -145,7 +159,7 @@ final class AdvancedHotspotUi {
         }
 
         Log.i(TAG, "SETTINGS_ADVANCED_APPLIED clients=" + clients
-                + " autoOff=" + autoOff);
+                + " autoOff=" + autoOff + " timeoutMin=" + timeoutMinutes);
     }
 
 
