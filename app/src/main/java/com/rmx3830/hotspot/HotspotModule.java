@@ -63,40 +63,6 @@ public final class HotspotModule extends XposedModule {
         probe(param.getClassLoader(), SETTINGS_CLASSES, false);
     }
 
-    private void installSettingsUiHook(ClassLoader settingsLoader) {
-        if (settingsUiHookInstalled) return;
-        try {
-            Class<?> settingsClass = Class.forName(
-                "com.android.settings.wifi.tether.WifiTetherSettings", false, settingsLoader);
-            Method target = null;
-            for (Method method : settingsClass.getDeclaredMethods()) {
-                if (!"onCreate".equals(method.getName())) continue;
-                Class<?>[] types = method.getParameterTypes();
-                if (types.length == 1 && types[0] == android.os.Bundle.class) {
-                    target = method;
-                    break;
-                }
-            }
-            if (target == null) {
-                note("SETTINGS_UI_HOOK_FAILED onCreate_missing");
-                return;
-            }
-            hook(target).intercept(chain -> {
-                Object result = chain.proceed();
-                try {
-                    AdvancedHotspotUi.inject(chain.getThisObject());
-                } catch (Throwable t) {
-                    note("SETTINGS_UI_INJECT_FAILED " + t.getClass().getSimpleName());
-                }
-                return result;
-            });
-            settingsUiHookInstalled = true;
-            note("SETTINGS_UI_HOOK_READY");
-        } catch (Throwable t) {
-            note("SETTINGS_UI_HOOK_FAILED " + t.getClass().getSimpleName());
-        }
-    }
-
     private void installWifiClassLoaderProbe() {
         if (classLoaderHookInstalled) return;
         try {
