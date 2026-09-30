@@ -12,7 +12,6 @@ with ZipFile(APK) as z:
         raise SystemExit("APK missing: " + ",".join(sorted(missing)))
 items = {
     "module.prop": ROOT / "magisk/module.prop",
-    "service.sh": ROOT / "magisk/service.sh",
     "uninstall.sh": ROOT / "magisk/uninstall.sh",
     "customize.sh": ROOT / "magisk/customize.sh",
     "system/app/RMX3830HotspotEnhancer/base.apk": APK,
