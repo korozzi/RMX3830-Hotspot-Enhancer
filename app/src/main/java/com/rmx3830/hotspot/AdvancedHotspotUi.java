@@ -64,14 +64,9 @@ final class AdvancedHotspotUi {
 
     private static void showEditor(Context context) {
         try {
-            // Do not read SoftApConfiguration before showing the dialog.
-            // On this Realme build some Settings/Wi-Fi framework calls can throw
-            // from the Settings process and previously prevented the dialog itself
-            // from opening. We read the live configuration only when the user taps
-            // "Применить".
             LinearLayout root = new LinearLayout(context);
             root.setOrientation(LinearLayout.VERTICAL);
-            root.setPadding(48, 12, 48, 4);
+            root.setPadding(48, 8, 48, 4);
 
             root.addView(label(context, "Максимум клиентов (1–10)"));
             EditText maxEdit = new EditText(context);
@@ -80,36 +75,12 @@ final class AdvancedHotspotUi {
             maxEdit.setText("10");
             root.addView(maxEdit);
 
-            root.addView(label(context, "Диапазон Wi‑Fi"));
-            RadioGroup bands = new RadioGroup(context);
-            bands.setOrientation(RadioGroup.VERTICAL);
-            RadioButton keep = radio(context, "Не менять", 100);
-            RadioButton b2 = radio(context, "2,4 ГГц", 101);
-            RadioButton b5 = radio(context, "5 ГГц", 102);
-            bands.addView(keep);
-            bands.addView(b2);
-            bands.addView(b5);
-            b2.setChecked(true);
-            root.addView(bands);
-
-            CheckBox hiddenBox = check(context, "Скрытая сеть", false);
             CheckBox autoBox = check(context, "Автоотключение при простое", true);
-            CheckBox isolationBox = check(context, "Изоляция клиентов", false);
-            CheckBox optimizationBox = check(context, "Оптимизация диапазона", true);
-            root.addView(hiddenBox);
             root.addView(autoBox);
-            root.addView(isolationBox);
-            root.addView(optimizationBox);
-
-            // The content is taller than the available dialog height on this Realme UI.
-            // Without a ScrollView the action buttons are pushed below the visible area.
-            ScrollView scroll = new ScrollView(context);
-            scroll.setFillViewport(true);
-            scroll.addView(root);
 
             AlertDialog dialog = new AlertDialog.Builder(context)
                     .setTitle("RMX3830 Hotspot")
-                    .setView(scroll)
+                    .setView(root)
                     .setNegativeButton("Отмена", null)
                     .setPositiveButton("Применить", null)
                     .create();
@@ -122,22 +93,13 @@ final class AdvancedHotspotUi {
                                 maxEdit.setError("1–10");
                                 return;
                             }
-                            int checked = bands.getCheckedRadioButtonId();
-                            int selectedBand = checked == 101
-                                    ? BAND_2GHZ
-                                    : checked == 102
-                                    ? BAND_5GHZ : 0;
 
                             Object wifi = context.getSystemService(Context.WIFI_SERVICE);
                             if (wifi == null) throw new IllegalStateException("wifi_service_null");
                             Object config = invoke(wifi, "getSoftApConfiguration");
-                            if (config == null) {
-                                throw new IllegalStateException("softap_config_null");
-                            }
+                            if (config == null) throw new IllegalStateException("softap_config_null");
 
-                            apply(wifi, config, clients, selectedBand,
-                                    hiddenBox.isChecked(), autoBox.isChecked(),
-                                    isolationBox.isChecked(), optimizationBox.isChecked());
+                            apply(wifi, config, clients, autoBox.isChecked());
                             dialog.dismiss();
                         } catch (Throwable t) {
                             Throwable cause = t.getCause() != null ? t.getCause() : t;
@@ -157,9 +119,8 @@ final class AdvancedHotspotUi {
         }
     }
 
-    private static void apply(Object wifi, Object current, int clients, int band,
-            boolean hidden, boolean autoOff, boolean isolation, boolean optimization)
-            throws Exception {
+    private static void apply(Object wifi, Object current, int clients,
+            boolean autoOff) throws Exception {
         Class<?> configClass = current.getClass();
         Class<?> builderClass = Class.forName(
                 "android.net.wifi.SoftApConfiguration$Builder", false,
@@ -167,26 +128,26 @@ final class AdvancedHotspotUi {
         Constructor<?> ctor = builderClass.getConstructor(configClass);
         Object builder = ctor.newInstance(current);
 
+        // These two operations are explicitly supported by WifiManager while a
+        // tethered Soft AP is running. Do not touch SSID, password, security,
+        // band, hidden SSID, or Realme's compatibility setting.
         call(builder, "setMaxNumberOfClients", new Class<?>[]{int.class}, clients);
-        call(builder, "setHiddenSsid", new Class<?>[]{boolean.class}, hidden);
         call(builder, "setAutoShutdownEnabled", new Class<?>[]{boolean.class}, autoOff);
-        call(builder, "setClientIsolationEnabled", new Class<?>[]{boolean.class}, isolation);
-        call(builder, "setBandOptimizationEnabled",
-                new Class<?>[]{boolean.class}, optimization);
-        if (band == BAND_2GHZ || band == BAND_5GHZ) {
-            call(builder, "setBand", new Class<?>[]{int.class}, band);
-        }
 
         Object result = invoke(builder, "build");
         Method setter = findMethod(wifi.getClass(), "setSoftApConfiguration", 1);
         if (setter == null) throw new NoSuchMethodException("setSoftApConfiguration");
         setter.setAccessible(true);
-        setter.invoke(wifi, result);
+        Object returned = setter.invoke(wifi, result);
+
+        if (returned instanceof Boolean && !((Boolean) returned)) {
+            throw new IllegalStateException("setSoftApConfiguration returned false");
+        }
 
         Log.i(TAG, "SETTINGS_ADVANCED_APPLIED clients=" + clients
-                + " band=" + band + " hidden=" + hidden + " autoOff=" + autoOff
-                + " isolation=" + isolation + " optimization=" + optimization);
+                + " autoOff=" + autoOff);
     }
+
 
     private static TextView label(Context c, String text) {
         TextView v = new TextView(c);
