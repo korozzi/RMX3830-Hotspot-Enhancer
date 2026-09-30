@@ -59,7 +59,7 @@ public final class HotspotModule extends XposedModule {
             hook(target).intercept(chain -> {
                 Object result = chain.proceed();
                 try {
-                    AdvancedHotspotUi.inject(chain.getThisObject());
+                    AdvancedHotspotUi.class.getDeclaredMethod("attachPreference", Object.class).invoke(null, chain.getThisObject());
                 } catch (Throwable t) {
                     note("SETTINGS_UI_INJECT_CALL_FAILED " + t.getClass().getSimpleName());
                 }
