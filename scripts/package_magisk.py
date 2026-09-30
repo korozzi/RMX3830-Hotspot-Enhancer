@@ -2,7 +2,7 @@ from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 ROOT = Path(__file__).resolve().parents[1]
 APK = ROOT / "app/build/outputs/apk/debug/app-debug.apk"
-OUT = ROOT / "dist/RMX3830-Hotspot-Diagnostic-v0.3.5-Magisk.zip"
+OUT = ROOT / "dist/RMX3830-Hotspot-Enhancer-v0.4.0-Magisk.zip"
 if not APK.exists():
     raise SystemExit("APK missing")
 with ZipFile(APK) as z:
