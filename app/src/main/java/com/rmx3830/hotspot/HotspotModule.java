@@ -61,7 +61,6 @@ public final class HotspotModule extends XposedModule {
         if (!"com.android.settings".equals(param.getPackageName())) return;
         note("SETTINGS_READY package=" + param.getPackageName());
         probe(param.getClassLoader(), SETTINGS_CLASSES, false);
-        installSettingsUiHook(param.getClassLoader());
     }
 
     private void installSettingsUiHook(ClassLoader settingsLoader) {
