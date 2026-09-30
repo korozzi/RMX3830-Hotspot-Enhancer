@@ -27,15 +27,15 @@ jobs:
         run: python3 scripts/package_magisk.py
       - name: Validate
         run: |
-          unzip -l dist/RMX3830-Hotspot-Diagnostic-v0.3.2-Magisk.zip
+          unzip -l dist/RMX3830-Hotspot-Diagnostic-v0.3.3-Magisk.zip
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep 'META-INF/xposed/'
       - uses: actions/upload-artifact@v4
         with:
-          name: RMX3830-LSPosed-APK-v0.3.2
+          name: RMX3830-LSPosed-APK-v0.3.3
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: RMX3830-Magisk-ZIP-v0.3.2
-          path: dist/RMX3830-Hotspot-Diagnostic-v0.3.2-Magisk.zip
+          name: RMX3830-Magisk-ZIP-v0.3.3
+          path: dist/RMX3830-Hotspot-Diagnostic-v0.3.3-Magisk.zip
           if-no-files-found: error
