@@ -37,6 +37,42 @@ public final class HotspotModule extends XposedModule {
     private static boolean wifiJarHookInstalled;
     private static boolean settingsUiHookInstalled;
 
+    private void installSettingsUiHook(ClassLoader settingsLoader) {
+        if (settingsUiHookInstalled || settingsLoader == null) return;
+        try {
+            Class<?> settingsClass = Class.forName(
+                    "com.android.settings.wifi.tether.WifiTetherSettings", false, settingsLoader);
+            Method onCreate = null;
+            for (Method method : settingsClass.getDeclaredMethods()) {
+                if (!"onCreate".equals(method.getName())) continue;
+                Class<?>[] types = method.getParameterTypes();
+                if (types.length == 1 && "android.os.Bundle".equals(types[0].getName())) {
+                    onCreate = method;
+                    break;
+                }
+            }
+            if (onCreate == null) {
+                note("SETTINGS_UI_HOOK_FAILED onCreate_missing");
+                return;
+            }
+            final Method target = onCreate;
+            hook(target).intercept(chain -> {
+                Object result = chain.proceed();
+                try {
+                    AdvancedHotspotUi.inject(chain.getThisObject());
+                } catch (Throwable t) {
+                    note("SETTINGS_UI_INJECT_CALL_FAILED " + t.getClass().getSimpleName());
+                }
+                return result;
+            });
+            settingsUiHookInstalled = true;
+            note("SETTINGS_UI_HOOK_READY method=" + target.toGenericString());
+        } catch (Throwable t) {
+            note("SETTINGS_UI_HOOK_FAILED " + t.getClass().getSimpleName()
+                    + ": " + String.valueOf(t.getMessage()));
+        }
+    }
+
     @Override
     public void onModuleLoaded(XposedModuleInterface.ModuleLoadedParam param) {
         note("MODULE_LOADED api=" + getApiVersion()
@@ -59,6 +95,7 @@ public final class HotspotModule extends XposedModule {
         if (!"com.android.settings".equals(param.getPackageName())) return;
         note("SETTINGS_READY package=" + param.getPackageName());
         probe(param.getClassLoader(), SETTINGS_CLASSES, false);
+        installSettingsUiHook(param.getClassLoader());
         installSettingsUiHook(param.getClassLoader());
     }
 
