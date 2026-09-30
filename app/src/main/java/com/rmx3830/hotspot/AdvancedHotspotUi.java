@@ -75,6 +75,38 @@ final class AdvancedHotspotUi {
         try { Log.i(TAG, message); } catch (Throwable ignored) { }
     }
 
+    static void attachPreference(Object fragment) {
+        try {
+            Object ctx = invoke(fragment, "getContext");
+            if (!(ctx instanceof Context)) return;
+            ClassLoader cl = fragment.getClass().getClassLoader();
+            Class<?> pc = Class.forName("androidx.preference.Preference", false, cl);
+            Object screen = invoke(fragment, "getPreferenceScreen");
+            if (screen == null) return;
+            String key = "rmx3830_hotspot_advanced";
+            if (invoke(screen, "findPreference", key) != null) return;
+            Object pref = pc.getConstructor(Context.class).newInstance(ctx);
+            invoke(pref, "setKey", key);
+            invoke(pref, "setTitle", "Расширенные настройки точки доступа");
+            invoke(pref, "setSummary", "Лимит клиентов, списки доступа, отключение и изоляция");
+            Class<?> lc = Class.forName(
+                    "androidx.preference.Preference$OnPreferenceClickListener", false, cl);
+            Object listener = Proxy.newProxyInstance(cl, new Class<?>[]{lc},
+                    (p, m, a) -> {
+                        if ("onPreferenceClick".equals(m.getName())) {
+                            showEditor((Context) ctx);
+                            return true;
+                        }
+                        return null;
+                    });
+            invoke(pref, "setOnPreferenceClickListener", listener);
+            invoke(screen, "addPreference", pref);
+            Log.i(TAG, "SETTINGS_UI_ADDED");
+        } catch (Throwable t) {
+            Log.i(TAG, "SETTINGS_UI_ATTACH_FAILED " + t.getClass().getSimpleName());
+        }
+    }
+
     static void open(Context context) { showEditor(context); }
 
     private static void showEditor(Context context) {
