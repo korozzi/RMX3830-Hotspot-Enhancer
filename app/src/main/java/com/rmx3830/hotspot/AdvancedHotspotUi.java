@@ -2,6 +2,9 @@ package com.rmx3830.hotspot;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
@@ -13,18 +16,22 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 
 final class AdvancedHotspotUi {
     private static final String TAG = "RMX3830Hotspot";
     private static final long CLIENT_FORCE_DISCONNECT_DELAY_MS = 2500L;
+    private static final Map<String, String> CLIENT_NAMES = new HashMap<>();
 
     private AdvancedHotspotUi() {}
 
@@ -75,40 +82,6 @@ final class AdvancedHotspotUi {
         try { Log.i(TAG, message); } catch (Throwable ignored) { }
     }
 
-    static void attachPreference(Object fragment) {
-        try {
-            Object ctx = invoke(fragment, "getContext");
-            if (!(ctx instanceof Context)) return;
-            ClassLoader cl = fragment.getClass().getClassLoader();
-            Class<?> pc = Class.forName("androidx.preference.Preference", false, cl);
-            Object screen = invoke(fragment, "getPreferenceScreen");
-            if (screen == null) return;
-            String key = "rmx3830_hotspot_advanced";
-            if (invoke(screen, "findPreference", key) != null) return;
-            Object pref = pc.getConstructor(Context.class).newInstance(ctx);
-            invoke(pref, "setKey", key);
-            invoke(pref, "setTitle", "Расширенные настройки точки доступа");
-            invoke(pref, "setSummary", "Лимит клиентов, списки доступа, отключение и изоляция");
-            Class<?> lc = Class.forName(
-                    "androidx.preference.Preference$OnPreferenceClickListener", false, cl);
-            Object listener = Proxy.newProxyInstance(cl, new Class<?>[]{lc},
-                    (p, m, a) -> {
-                        if ("onPreferenceClick".equals(m.getName())) {
-                            showEditor((Context) ctx);
-                            return true;
-                        }
-                        return null;
-                    });
-            invoke(pref, "setOnPreferenceClickListener", listener);
-            invoke(screen, "addPreference", pref);
-            Log.i(TAG, "SETTINGS_UI_ADDED");
-        } catch (Throwable t) {
-            Log.i(TAG, "SETTINGS_UI_ATTACH_FAILED " + t.getClass().getSimpleName());
-        }
-    }
-
-    static void open(Context context) { showEditor(context); }
-
     private static void showEditor(Context context) {
         try {
             Object wifi = context.getSystemService(Context.WIFI_SERVICE);
@@ -118,109 +91,98 @@ final class AdvancedHotspotUi {
 
             int storedClients = ((Number) invoke(current, "getMaxNumberOfClients")).intValue();
             long storedTimeout = ((Number) invoke(current, "getShutdownTimeoutMillis")).longValue();
-            boolean storedAuto = (Boolean) invoke(current, "isAutoShutdownEnabled");
             boolean storedIsolation = readBoolean(current, "isClientIsolationEnabled", false);
-            boolean clientControl = readBoolean(current, "isClientControlByUserEnabled", false);
-
             int initialClients = storedClients > 0 ? Math.min(storedClients, 10) : 10;
             int initialTimeout = storedTimeout > 0
-                    ? (int) Math.max(1, Math.min(1440, storedTimeout / 60000L))
-                    : 10;
+                    ? (int) Math.max(1, Math.min(1440, storedTimeout / 60000L)) : 10;
 
-            LinearLayout content = new LinearLayout(context);
-            content.setOrientation(LinearLayout.VERTICAL);
-            content.setPadding(48, 8, 48, 8);
+            LinearLayout root = new LinearLayout(context);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(28, 24, 28, 12);
+            root.setBackground(roundBackground(0xFFFFFFFF, 28));
 
-            TextView clientHeader = label(context, "Подключённые устройства");
-            content.addView(clientHeader);
-
-            TextView clientCounter = label(context, "Подключено: … / " + initialClients);
-            content.addView(clientCounter);
-
-            LinearLayout clientList = new LinearLayout(context);
-            clientList.setOrientation(LinearLayout.VERTICAL);
-            content.addView(clientList);
-
-            Button refreshClients = new Button(context);
-            refreshClients.setText("Обновить список");
-            content.addView(refreshClients);
-
-            Button whitelistButton = new Button(context);
-            whitelistButton.setText("Настроить белый список");
-            content.addView(whitelistButton);
-
-            Button blockedButton = new Button(context);
-            blockedButton.setText("Заблокированные устройства");
-            content.addView(blockedButton);
-
-            content.addView(label(context, "Максимум клиентов (1–10)"));
-            EditText maxEdit = new EditText(context);
-            maxEdit.setSingleLine(true);
-            maxEdit.setInputType(InputType.TYPE_CLASS_NUMBER);
-            maxEdit.setText(String.valueOf(initialClients));
-            content.addView(maxEdit);
-
-            content.addView(label(context, "Отключать после простоя (минуты)"));
-            EditText timeoutEdit = new EditText(context);
-            timeoutEdit.setSingleLine(true);
-            timeoutEdit.setInputType(InputType.TYPE_CLASS_NUMBER);
-            timeoutEdit.setText(String.valueOf(initialTimeout));
-            content.addView(timeoutEdit);
-
-            CheckBox isolationBox = check(context,
-                    "Изоляция клиентов", storedIsolation);
-            boolean isolationSupported = hasMethod(current, "isClientIsolationEnabled")
-                    && hasBuilderMethod(current, "setClientIsolationEnabled");
-            isolationBox.setEnabled(isolationSupported);
-            if (!isolationSupported) {
-                isolationBox.setText("Изоляция клиентов (не поддерживается этой сборкой)");
-            }
-            content.addView(isolationBox);
+            TextView title = rowTitle(context, "Расширенные настройки точки доступа");
+            title.setTextSize(22);
+            title.setTypeface(null, android.graphics.Typeface.BOLD);
+            title.setPadding(0, 0, 0, 18);
+            root.addView(title);
 
             ScrollView scroll = new ScrollView(context);
-            scroll.setFillViewport(true);
-            scroll.addView(content);
+            LinearLayout content = new LinearLayout(context);
+            content.setOrientation(LinearLayout.VERTICAL);
 
-            LinearLayout container = new LinearLayout(context);
-            container.setOrientation(LinearLayout.VERTICAL);
-            container.addView(scroll, new LinearLayout.LayoutParams(
+            content.addView(sectionLabel(context, "Подключённые устройства"));
+            LinearLayout clientsCard = card(context);
+            TextView clientCounter = rowTitle(context, "Подключено: … / " + initialClients);
+            clientCounter.setPadding(0, 10, 0, 10);
+            clientsCard.addView(clientCounter);
+            LinearLayout clientList = new LinearLayout(context);
+            clientList.setOrientation(LinearLayout.VERTICAL);
+            clientsCard.addView(clientList);
+            TextView refreshClients = actionRow(context, "Обновить список",
+                    "Показать текущее состояние точки доступа");
+            clientsCard.addView(refreshClients);
+            content.addView(clientsCard);
+
+            content.addView(sectionLabel(context, "Управление устройствами"));
+            TextView whitelistButton = actionRow(context, "Белый список",
+                    "Устройства, которым разрешено подключаться");
+            TextView blockedButton = actionRow(context, "Заблокированные устройства",
+                    "Устройства, которым запрещено подключение");
+            content.addView(whitelistButton);
+            content.addView(blockedButton);
+
+            content.addView(sectionLabel(context, "Дополнительные параметры"));
+            LinearLayout settingsCard = card(context);
+            LinearLayout maxRow = valueRow(context, "Максимум клиентов", "1–10", initialClients);
+            LinearLayout timeoutRow = valueRow(context, "Отключать после простоя", "минуты", initialTimeout);
+            settingsCard.addView(maxRow);
+            settingsCard.addView(timeoutRow);
+            EditText maxEdit = (EditText) maxRow.getChildAt(1);
+            EditText timeoutEdit = (EditText) timeoutRow.getChildAt(1);
+
+            boolean isolationSupported = hasMethod(current, "isClientIsolationEnabled")
+                    && hasBuilderMethod(current, "setClientIsolationEnabled");
+            LinearLayout isolationRow = new LinearLayout(context);
+            isolationRow.setOrientation(LinearLayout.HORIZONTAL);
+            isolationRow.setGravity(Gravity.CENTER_VERTICAL);
+            isolationRow.setPadding(0, 16, 0, 16);
+            LinearLayout isolationTexts = new LinearLayout(context);
+            isolationTexts.setOrientation(LinearLayout.VERTICAL);
+            isolationTexts.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            isolationTexts.addView(rowTitle(context, "Изоляция клиентов"));
+            isolationTexts.addView(rowSummary(context, isolationSupported
+                    ? "Клиенты не смогут обмениваться трафиком напрямую"
+                    : "Недоступно в текущей прошивке"));
+            isolationRow.addView(isolationTexts);
+            Switch isolationSwitch = new Switch(context);
+            isolationSwitch.setChecked(storedIsolation);
+            isolationSwitch.setEnabled(isolationSupported);
+            isolationRow.addView(isolationSwitch);
+            settingsCard.addView(isolationRow);
+            content.addView(settingsCard);
+
+            scroll.addView(content);
+            root.addView(scroll, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
-            LinearLayout buttons = new LinearLayout(context);
-            buttons.setOrientation(LinearLayout.HORIZONTAL);
-            buttons.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-            Button cancel = new Button(context);
-            cancel.setText("Отмена");
-            Button applyButton = new Button(context);
-            applyButton.setText("Применить");
-            buttons.addView(cancel);
-            buttons.addView(applyButton);
-            container.addView(buttons, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            LinearLayout bottom = new LinearLayout(context);
+            bottom.setOrientation(LinearLayout.HORIZONTAL);
+            bottom.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            TextView cancel = dialogButton(context, "ОТМЕНА");
+            TextView applyButton = dialogButton(context, "ПРИМЕНИТЬ");
+            bottom.addView(cancel);
+            bottom.addView(applyButton);
+            root.addView(bottom);
 
-            AlertDialog dialog = new AlertDialog.Builder(context)
-                    .setTitle("Расширенные настройки точки доступа")
-                    .setView(container)
-                    .create();
-
+            AlertDialog dialog = new AlertDialog.Builder(context).setView(root).create();
             ClientCallbackHandle callback = registerClientCallback(
                     wifi, context, clientCounter, clientList, maxEdit);
 
-            Runnable refresh = () -> refreshClientsFromCallback(
-                    clientCounter, clientList, maxEdit, callback == null ? null : callback.clients);
-            refreshClients.setOnClickListener(v -> {
-                try {
-                    Object cfg = invoke(wifi, "getSoftApConfiguration");
-                    int limit = ((Number) invoke(cfg, "getMaxNumberOfClients")).intValue();
-                    if (limit <= 0) limit = 10;
-                    clientCounter.setText("Подключено: "
-                            + (callback == null ? 0 : callback.clients.size()) + " / " + limit);
-                    refresh.run();
-                } catch (Throwable t) {
-                    Log.i(TAG, "SETTINGS_CLIENT_REFRESH_FAILED " + t.getClass().getSimpleName());
-                }
-            });
-
+            refreshClients.setOnClickListener(v ->
+                    refreshClientsFromCallback(clientCounter, clientList, maxEdit,
+                            callback == null ? null : callback.clients, callback));
             whitelistButton.setOnClickListener(v -> showWhitelistEditor(context, wifi));
             blockedButton.setOnClickListener(v -> showBlockedEditor(context, wifi));
 
@@ -241,20 +203,17 @@ final class AdvancedHotspotUi {
                         timeoutEdit.setError("1–1440 минут");
                         return;
                     }
-
                     Object config = invoke(wifi, "getSoftApConfiguration");
-                    if (config == null) throw new IllegalStateException("softap_config_null");
                     apply(wifi, config, clients, timeoutMinutes,
-                            isolationSupported && isolationBox.isChecked());
-
+                            isolationSupported && isolationSwitch.isChecked());
                     new Handler(Looper.getMainLooper()).postDelayed(
                             () -> verifyAndLog(wifi, clients, timeoutMinutes,
-                                    isolationSupported && isolationBox.isChecked()), 500);
+                                    isolationSupported && isolationSwitch.isChecked()), 500);
                     unregisterClientCallback(wifi, callback);
                     dialog.dismiss();
                 } catch (Throwable t) {
                     Throwable cause = t.getCause() != null ? t.getCause() : t;
-                    Log.i(TAG, "SETTINGS_ADVANCED_APPLY_FAILED "
+                    note("SETTINGS_ADVANCED_APPLY_FAILED "
                             + cause.getClass().getSimpleName() + ": "
                             + String.valueOf(cause.getMessage()));
                     maxEdit.setError("Не удалось применить");
@@ -263,17 +222,23 @@ final class AdvancedHotspotUi {
 
             dialog.setOnDismissListener(d -> unregisterClientCallback(wifi, callback));
             dialog.show();
-            Log.i(TAG, "SETTINGS_ADVANCED_DIALOG_SHOWN");
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                dialog.getWindow().setLayout(
+                        (int) (context.getResources().getDisplayMetrics().widthPixels * 0.94f),
+                        (int) (context.getResources().getDisplayMetrics().heightPixels * 0.86f));
+            }
+            note("SETTINGS_ADVANCED_DIALOG_SHOWN");
         } catch (Throwable t) {
             Throwable cause = t.getCause() != null ? t.getCause() : t;
-            Log.i(TAG, "SETTINGS_ADVANCED_DIALOG_FAILED "
+            note("SETTINGS_ADVANCED_DIALOG_FAILED "
                     + cause.getClass().getSimpleName() + ": "
                     + String.valueOf(cause.getMessage()));
         }
     }
 
     private static void refreshClientsFromCallback(TextView counter, LinearLayout list,
-            EditText maxEdit, List<Object> clients) {
+            EditText maxEdit, List<Object> clients, ClientCallbackHandle handle) {
         if (clients == null) return;
         list.removeAllViews();
         int limit = parseInt(maxEdit.getText().toString(), 10);
@@ -282,32 +247,24 @@ final class AdvancedHotspotUi {
             String mac = clientMac(client);
             LinearLayout row = new LinearLayout(counter.getContext());
             row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(0, 8, 0, 8);
-
-            TextView info = new TextView(counter.getContext());
-            info.setText("📱 " + mac);
-            row.addView(info);
+            row.setPadding(0, 12, 0, 12);
+            row.addView(rowTitle(counter.getContext(), deviceName(mac)));
+            row.addView(rowSummary(counter.getContext(), mac));
 
             LinearLayout actions = new LinearLayout(counter.getContext());
             actions.setGravity(Gravity.END);
-            Button disconnect = new Button(counter.getContext());
-            disconnect.setText("Отключить");
-            Button allow = new Button(counter.getContext());
-            allow.setText("Белый список");
-            Button block = new Button(counter.getContext());
-            block.setText("Заблокировать");
+            TextView disconnect = smallAction(counter.getContext(), "Отключить");
+            TextView allow = smallAction(counter.getContext(), "В белый список");
+            TextView block = smallAction(counter.getContext(), "Заблокировать");
             actions.addView(disconnect);
             actions.addView(allow);
             actions.addView(block);
             row.addView(actions);
             list.addView(row);
 
-            disconnect.setOnClickListener(v -> forceTemporaryDisconnect(
-                    counter.getContext(), clientMac(client)));
-            allow.setOnClickListener(v -> allowClient(
-                    counter.getContext(), clientMac(client)));
-            block.setOnClickListener(v -> blockClient(
-                    counter.getContext(), clientMac(client)));
+            disconnect.setOnClickListener(v -> forceTemporaryDisconnect(counter.getContext(), mac));
+            allow.setOnClickListener(v -> allowClient(counter.getContext(), mac));
+            block.setOnClickListener(v -> blockClient(counter.getContext(), mac));
         }
     }
 
@@ -366,56 +323,90 @@ final class AdvancedHotspotUi {
         try {
             Object cfg = invoke(wifi, "getSoftApConfiguration");
             List<Object> blocked = copyList(invoke(cfg, "getBlockedClientList"));
+            List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
+            boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
 
             LinearLayout box = new LinearLayout(context);
             box.setOrientation(LinearLayout.VERTICAL);
-            box.setPadding(48, 8, 48, 8);
-            box.addView(label(context,
+            box.setPadding(28, 8, 28, 8);
+            box.addView(rowSummary(context,
                     "Заблокированные устройства не смогут подключиться к точке доступа."));
-
             LinearLayout list = new LinearLayout(context);
             list.setOrientation(LinearLayout.VERTICAL);
             box.addView(list);
 
-            Runnable render = () -> renderMacList(context, list, blocked, "Заблокировано", true);
+            Runnable render = () -> renderBlockedList(
+                    context, list, blocked, wifi, control, allowed);
             render.run();
 
             Button add = new Button(context);
             add.setText("Добавить MAC-адрес");
             box.addView(add);
 
-            final AlertDialog dialog = new AlertDialog.Builder(context)
+            AlertDialog dialog = new AlertDialog.Builder(context)
                     .setTitle("Заблокированные устройства")
                     .setView(box)
-                    .setNegativeButton("Отмена", null)
-                    .setPositiveButton("Применить", null)
+                    .setNegativeButton("Закрыть", null)
                     .create();
 
             add.setOnClickListener(v -> askForMac(context, mac -> {
                 if (!containsMac(blocked, mac)) {
                     blocked.add(parseMac(mac));
-                    render.run();
-                }
-            }));
-
-            dialog.setOnShowListener(d -> {
-                Button applyButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-                applyButton.setOnClickListener(v -> {
                     try {
-                        List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
-                        allowed.removeIf(x -> containsMac(blocked, macString(x)));
-                        applyClientLists(wifi,
-                                readBoolean(cfg, "isClientControlByUserEnabled", false),
-                                allowed, blocked);
-                        dialog.dismiss();
+                        applyClientLists(wifi, control, allowed, blocked);
+                        render.run();
                     } catch (Throwable t) {
                         showError(context, "Блокировка", t);
                     }
-                });
-            });
+                }
+            }));
             dialog.show();
         } catch (Throwable t) {
             showError(context, "Блокировка", t);
+        }
+    }
+
+    private static void renderBlockedList(Context context, LinearLayout list,
+            List<Object> blocked, Object wifi, boolean control, List<Object> allowed) {
+        list.removeAllViews();
+        if (blocked.isEmpty()) {
+            list.addView(rowSummary(context, "Список пуст"));
+            return;
+        }
+        for (Object item : new ArrayList<>(blocked)) {
+            String mac = macString(item);
+            LinearLayout row = new LinearLayout(context);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(0, 12, 0, 12);
+            row.addView(rowTitle(context, deviceName(mac)));
+            row.addView(rowSummary(context, mac));
+            TextView unblock = smallAction(context, "Разблокировать");
+            row.addView(unblock);
+            unblock.setOnClickListener(v -> {
+                try {
+                    Object latest = invoke(wifi, "getSoftApConfiguration");
+                    List<Object> latestBlocked = copyList(
+                            invoke(latest, "getBlockedClientList"));
+                    List<Object> latestAllowed = copyList(
+                            invoke(latest, "getAllowedClientList"));
+                    boolean latestControl = readBoolean(
+                            latest, "isClientControlByUserEnabled", false);
+                    latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
+                    if (latestControl && !containsMac(latestAllowed, mac)) {
+                        latestAllowed.add(parseMac(mac));
+                    }
+                    applyClientLists(wifi, latestControl, latestAllowed, latestBlocked);
+                    blocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
+                    allowed.clear();
+                    allowed.addAll(latestAllowed);
+                    renderBlockedList(context, list, blocked, wifi,
+                            latestControl, allowed);
+                    note("CLIENT_UNBLOCKED");
+                } catch (Throwable t) {
+                    showError(context, "Разблокировка", t);
+                }
+            });
+            list.addView(row);
         }
     }
 
@@ -474,7 +465,7 @@ final class AdvancedHotspotUi {
             blocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
             if (!containsMac(allowed, mac)) allowed.add(parseMac(mac));
             applyClientLists(wifi, true, allowed, blocked);
-            Log.i(TAG, "CLIENT_ALLOWED mac=" + mac);
+            note("CLIENT_ALLOWED");
         } catch (Throwable t) {
             showError(context, "Белый список", t);
         }
@@ -488,9 +479,9 @@ final class AdvancedHotspotUi {
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
             if (!containsMac(blocked, mac)) blocked.add(parseMac(mac));
             allowed.removeIf(x -> containsMac(blocked, macString(x)));
-            applyClientLists(wifi, !allowed.isEmpty() || !blocked.isEmpty(),
-                    allowed, blocked);
-            Log.i(TAG, "CLIENT_BLOCKED mac=" + mac);
+            boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
+            applyClientLists(wifi, control, allowed, blocked);
+            note("CLIENT_BLOCKED");
         } catch (Throwable t) {
             showError(context, "Блокировка", t);
         }
@@ -502,10 +493,10 @@ final class AdvancedHotspotUi {
             Object cfg = invoke(wifi, "getSoftApConfiguration");
             List<Object> blocked = copyList(invoke(cfg, "getBlockedClientList"));
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
-            boolean control = !allowed.isEmpty() || !blocked.isEmpty();
+            boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
             if (!containsMac(blocked, mac)) blocked.add(parseMac(mac));
             applyClientLists(wifi, control, allowed, blocked);
-            Log.i(TAG, "CLIENT_FORCE_DISCONNECT_REQUEST mac=" + mac);
+            note("CLIENT_FORCE_DISCONNECT_REQUEST");
 
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 try {
@@ -515,7 +506,7 @@ final class AdvancedHotspotUi {
                     List<Object> latestAllowed = copyList(invoke(latest, "getAllowedClientList"));
                     applyClientLists(wifi, !latestAllowed.isEmpty() || !latestBlocked.isEmpty(),
                             latestAllowed, latestBlocked);
-                    Log.i(TAG, "CLIENT_FORCE_DISCONNECT_RELEASED mac=" + mac);
+                    note("CLIENT_FORCE_DISCONNECT_RELEASED");
                 } catch (Throwable t) {
                     Log.i(TAG, "CLIENT_FORCE_DISCONNECT_RELEASE_FAILED "
                             + t.getClass().getSimpleName());
@@ -615,6 +606,9 @@ final class AdvancedHotspotUi {
         try {
             Class<?> callbackClass = Class.forName("android.net.wifi.WifiManager$SoftApCallback");
             final ClientCallbackHandle handle = new ClientCallbackHandle();
+            handle.counter = counter;
+            handle.list = list;
+            handle.maxEdit = maxEdit;
             Executor executor = command -> new Handler(Looper.getMainLooper()).post(command);
 
             Object callback = Proxy.newProxyInstance(callbackClass.getClassLoader(),
@@ -623,7 +617,7 @@ final class AdvancedHotspotUi {
                             for (Object arg : args) {
                                 if (arg instanceof List) {
                                     handle.clients = new ArrayList<>((List<Object>) arg);
-                                    refreshClientsFromCallback(counter, list, maxEdit, handle.clients);
+                                    refreshClientsFromCallback(counter, list, maxEdit, handle.clients, handle);
                                 }
                             }
                         }
@@ -635,7 +629,8 @@ final class AdvancedHotspotUi {
             register.setAccessible(true);
             register.invoke(wifi, executor, callback);
             handle.callback = callback;
-            Log.i(TAG, "CLIENT_CALLBACK_REGISTERED");
+            registerTetheringNameCallback(context, handle);
+            note("CLIENT_CALLBACK_REGISTERED");
             return handle;
         } catch (Throwable t) {
             Log.i(TAG, "CLIENT_CALLBACK_FAILED " + t.getClass().getSimpleName()
@@ -653,8 +648,9 @@ final class AdvancedHotspotUi {
                 unregister.setAccessible(true);
                 unregister.invoke(wifi, handle.callback);
             }
+            unregisterTetheringNameCallback(handle);
             handle.callback = null;
-            Log.i(TAG, "CLIENT_CALLBACK_UNREGISTERED");
+            note("CLIENT_CALLBACK_UNREGISTERED");
         } catch (Throwable t) {
             Log.i(TAG, "CLIENT_CALLBACK_UNREGISTER_FAILED "
                     + t.getClass().getSimpleName());
@@ -700,8 +696,162 @@ final class AdvancedHotspotUi {
         return out;
     }
 
-    private static boolean enabledValue(CheckBox box) {
-        return box.isChecked();
+    private static void registerTetheringNameCallback(Context context,
+            ClientCallbackHandle handle) {
+        try {
+            Object manager = context.getSystemService("tethering");
+            if (manager == null) return;
+            Class<?> callbackClass = Class.forName(
+                    "android.net.TetheringManager$TetheringEventCallback");
+            Object callback = Proxy.newProxyInstance(callbackClass.getClassLoader(),
+                    new Class<?>[]{callbackClass}, (proxy, method, args) -> {
+                        if ("onClientsChanged".equals(method.getName())
+                                && args != null && args.length > 0
+                                && args[0] instanceof Iterable) {
+                            for (Object client : (Iterable<?>) args[0]) {
+                                try {
+                                    String mac = macString(invoke(client, "getMacAddress"));
+                                    Object addresses = invoke(client, "getAddresses");
+                                    if (addresses instanceof Iterable) {
+                                        for (Object address : (Iterable<?>) addresses) {
+                                            Object value = invoke(address, "getHostname");
+                                            if (value != null) {
+                                                String hostname = String.valueOf(value).trim();
+                                                if (!hostname.isEmpty()) {
+                                                    CLIENT_NAMES.put(mac.toUpperCase(), hostname);
+                                                    if (handle.counter != null && handle.list != null
+                                                            && handle.maxEdit != null) {
+                                                        refreshClientsFromCallback(handle.counter,
+                                                                handle.list, handle.maxEdit,
+                                                                handle.clients, handle);
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (Throwable ignored) { }
+                            }
+                        }
+                        return null;
+                    });
+            Method register = findMethod(manager.getClass(),
+                    "registerTetheringEventCallback", 2);
+            if (register == null) return;
+            Executor executor = command -> new Handler(Looper.getMainLooper()).post(command);
+            register.setAccessible(true);
+            register.invoke(manager, executor, callback);
+            handle.tetheringManager = manager;
+            handle.tetheringCallback = callback;
+            note("CLIENT_HOSTNAME_CALLBACK_REGISTERED");
+        } catch (Throwable t) {
+            note("CLIENT_HOSTNAME_CALLBACK_UNAVAILABLE "
+                    + t.getClass().getSimpleName());
+        }
+    }
+
+    private static void unregisterTetheringNameCallback(ClientCallbackHandle handle) {
+        if (handle == null || handle.tetheringManager == null
+                || handle.tetheringCallback == null) return;
+        try {
+            Method unregister = findMethod(handle.tetheringManager.getClass(),
+                    "unregisterTetheringEventCallback", 1);
+            if (unregister != null) {
+                unregister.setAccessible(true);
+                unregister.invoke(handle.tetheringManager, handle.tetheringCallback);
+            }
+        } catch (Throwable ignored) { }
+        handle.tetheringManager = null;
+        handle.tetheringCallback = null;
+    }
+
+    private static String deviceName(String mac) {
+        if (mac != null) {
+            String name = CLIENT_NAMES.get(mac.toUpperCase());
+            if (name != null && !name.isEmpty()) return name;
+        }
+        return "Устройство";
+    }
+
+    private static TextView sectionLabel(Context context, String text) {
+        TextView v = rowSummary(context, text);
+        v.setTextSize(14);
+        v.setPadding(4, 18, 4, 8);
+        return v;
+    }
+
+    private static LinearLayout card(Context context) {
+        LinearLayout card = new LinearLayout(context);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(20, 4, 20, 4);
+        card.setBackground(roundBackground(0xFFFFFFFF, 22));
+        return card;
+    }
+
+    private static TextView actionRow(Context context, String title, String summary) {
+        TextView v = rowTitle(context, title);
+        v.setText(title + "\n" + summary);
+        v.setTextSize(16);
+        v.setPadding(20, 16, 20, 16);
+        v.setBackground(roundBackground(0xFFFFFFFF, 22));
+        v.setClickable(true);
+        v.setFocusable(true);
+        return v;
+    }
+
+    private static TextView dialogButton(Context context, String text) {
+        TextView v = smallAction(context, text);
+        v.setPadding(18, 14, 18, 14);
+        return v;
+    }
+
+    private static TextView smallAction(Context context, String text) {
+        TextView v = new TextView(context);
+        v.setText(text);
+        v.setTextSize(14);
+        v.setTextColor(0xFF1769E0);
+        v.setGravity(Gravity.CENTER);
+        v.setPadding(12, 10, 12, 10);
+        v.setClickable(true);
+        v.setFocusable(true);
+        return v;
+    }
+
+    private static TextView rowTitle(Context context, String text) {
+        TextView v = new TextView(context);
+        v.setText(text);
+        v.setTextSize(17);
+        v.setTextColor(0xFF202124);
+        return v;
+    }
+
+    private static TextView rowSummary(Context context, String text) {
+        TextView v = new TextView(context);
+        v.setText(text);
+        v.setTextSize(14);
+        v.setTextColor(0xFF777777);
+        return v;
+    }
+
+    private static GradientDrawable roundBackground(int color, float radius) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        return d;
+    }
+
+    private static LinearLayout valueRow(Context context, String title, String suffix, int value) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(0, 12, 0, 8);
+        row.addView(rowSummary(context, title + " (" + suffix + ")"));
+        EditText edit = new EditText(context);
+        edit.setSingleLine(true);
+        edit.setInputType(InputType.TYPE_CLASS_NUMBER);
+        edit.setText(String.valueOf(value));
+        edit.setTextSize(17);
+        row.addView(edit);
+        return row;
     }
 
     private static int parseInt(String value, int fallback) {
@@ -818,6 +968,11 @@ final class AdvancedHotspotUi {
 
     private static final class ClientCallbackHandle {
         Object callback;
+        Object tetheringManager;
+        Object tetheringCallback;
+        TextView counter;
+        LinearLayout list;
+        EditText maxEdit;
         List<Object> clients = new ArrayList<>();
     }
 }
