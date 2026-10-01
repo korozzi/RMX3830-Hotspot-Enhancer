@@ -199,7 +199,7 @@ final class AdvancedHotspotUi {
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
             AlertDialog dialog = new AlertDialog.Builder(context)
-                    .setTitle("RMX3830 Hotspot")
+                    .setTitle("Расширенные настройки точки доступа")
                     .setView(container)
                     .create();
 
@@ -315,22 +315,15 @@ final class AdvancedHotspotUi {
         try {
             Object cfg = invoke(wifi, "getSoftApConfiguration");
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
-            boolean enabled = readBoolean(cfg, "isClientControlByUserEnabled", false);
-
             LinearLayout box = new LinearLayout(context);
             box.setOrientation(LinearLayout.VERTICAL);
             box.setPadding(48, 8, 48, 8);
-
-            CheckBox enable = check(context, "Белый список включён", enabled);
-            box.addView(enable);
-            box.addView(label(context,
-                    "При включении подключаться смогут только MAC-адреса из разрешённого списка."));
 
             LinearLayout list = new LinearLayout(context);
             list.setOrientation(LinearLayout.VERTICAL);
             box.addView(list);
 
-            Runnable render = () -> renderMacList(context, list, allowed, "Разрешено");
+            Runnable render = () -> renderMacList(context, list, allowed, "Разрешено", true);
             render.run();
 
             Button add = new Button(context);
@@ -355,7 +348,7 @@ final class AdvancedHotspotUi {
                 Button applyButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
                 applyButton.setOnClickListener(v -> {
                     try {
-                        applyClientLists(wifi, enabledValue(enable), allowed,
+                        applyClientLists(wifi, !allowed.isEmpty() || !copyList(invoke(cfg, "getBlockedClientList")).isEmpty(), allowed,
                                 copyList(invoke(cfg, "getBlockedClientList")));
                         dialog.dismiss();
                     } catch (Throwable t) {
@@ -384,7 +377,7 @@ final class AdvancedHotspotUi {
             list.setOrientation(LinearLayout.VERTICAL);
             box.addView(list);
 
-            Runnable render = () -> renderMacList(context, list, blocked, "Заблокировано");
+            Runnable render = () -> renderMacList(context, list, blocked, "Заблокировано", true);
             render.run();
 
             Button add = new Button(context);
@@ -427,7 +420,7 @@ final class AdvancedHotspotUi {
     }
 
     private static void renderMacList(Context context, LinearLayout list,
-            List<Object> macs, String prefix) {
+            List<Object> macs, String prefix, boolean removable) {
         list.removeAllViews();
         if (macs.isEmpty()) {
             TextView empty = new TextView(context);
@@ -442,6 +435,13 @@ final class AdvancedHotspotUi {
             text.setText(prefix + ": " + macString(mac));
             row.addView(text, new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            Button remove = new Button(context);
+            remove.setText("Заблокировано".equals(prefix) ? "Разблокировать" : "Удалить");
+            remove.setOnClickListener(v -> {
+                macs.remove(mac);
+                renderMacList(context, list, macs, prefix, removable);
+            });
+            row.addView(remove);
             list.addView(row);
         }
     }
@@ -488,8 +488,7 @@ final class AdvancedHotspotUi {
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
             if (!containsMac(blocked, mac)) blocked.add(parseMac(mac));
             allowed.removeIf(x -> containsMac(blocked, macString(x)));
-            applyClientLists(wifi,
-                    readBoolean(cfg, "isClientControlByUserEnabled", false),
+            applyClientLists(wifi, !allowed.isEmpty() || !blocked.isEmpty(),
                     allowed, blocked);
             Log.i(TAG, "CLIENT_BLOCKED mac=" + mac);
         } catch (Throwable t) {
@@ -503,7 +502,7 @@ final class AdvancedHotspotUi {
             Object cfg = invoke(wifi, "getSoftApConfiguration");
             List<Object> blocked = copyList(invoke(cfg, "getBlockedClientList"));
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
-            boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
+            boolean control = !allowed.isEmpty() || !blocked.isEmpty();
             if (!containsMac(blocked, mac)) blocked.add(parseMac(mac));
             applyClientLists(wifi, control, allowed, blocked);
             Log.i(TAG, "CLIENT_FORCE_DISCONNECT_REQUEST mac=" + mac);
@@ -514,8 +513,7 @@ final class AdvancedHotspotUi {
                     List<Object> latestBlocked = copyList(invoke(latest, "getBlockedClientList"));
                     latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
                     List<Object> latestAllowed = copyList(invoke(latest, "getAllowedClientList"));
-                    applyClientLists(wifi,
-                            readBoolean(latest, "isClientControlByUserEnabled", false),
+                    applyClientLists(wifi, !latestAllowed.isEmpty() || !latestBlocked.isEmpty(),
                             latestAllowed, latestBlocked);
                     Log.i(TAG, "CLIENT_FORCE_DISCONNECT_RELEASED mac=" + mac);
                 } catch (Throwable t) {
