@@ -9,10 +9,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -98,13 +98,13 @@ final class AdvancedHotspotUi {
 
             LinearLayout root = new LinearLayout(context);
             root.setOrientation(LinearLayout.VERTICAL);
-            root.setPadding(28, 24, 28, 12);
+            root.setPadding(28, 20, 28, 8);
             root.setBackground(roundBackground(0xFFFFFFFF, 28));
 
             TextView title = rowTitle(context, "Расширенные настройки точки доступа");
-            title.setTextSize(22);
+            title.setTextSize(24);
             title.setTypeface(null, android.graphics.Typeface.BOLD);
-            title.setPadding(0, 0, 0, 18);
+            title.setPadding(0, 0, 0, 10);
             root.addView(title);
 
             ScrollView scroll = new ScrollView(context);
@@ -225,8 +225,8 @@ final class AdvancedHotspotUi {
             if (dialog.getWindow() != null) {
                 dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
                 dialog.getWindow().setLayout(
-                        (int) (context.getResources().getDisplayMetrics().widthPixels * 0.94f),
-                        (int) (context.getResources().getDisplayMetrics().heightPixels * 0.86f));
+                        (int) (context.getResources().getDisplayMetrics().widthPixels * 0.96f),
+                        (int) (context.getResources().getDisplayMetrics().heightPixels * 0.93f));
             }
             note("SETTINGS_ADVANCED_DIALOG_SHOWN");
         } catch (Throwable t) {
@@ -272,48 +272,87 @@ final class AdvancedHotspotUi {
         try {
             Object cfg = invoke(wifi, "getSoftApConfiguration");
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
-            LinearLayout box = new LinearLayout(context);
-            box.setOrientation(LinearLayout.VERTICAL);
-            box.setPadding(48, 8, 48, 8);
+            boolean enabled = readBoolean(cfg, "isClientControlByUserEnabled", false);
 
+            LinearLayout root = dialogRoot(context);
+            root.addView(dialogTitle(context, "Белый список"));
+            root.addView(rowSummary(context,
+                    "Разрешённые устройства смогут подключаться к точке доступа."));
+
+            LinearLayout switchRow = new LinearLayout(context);
+            switchRow.setOrientation(LinearLayout.HORIZONTAL);
+            switchRow.setGravity(Gravity.CENTER_VERTICAL);
+            switchRow.setPadding(0, 14, 0, 14);
+
+            LinearLayout switchText = new LinearLayout(context);
+            switchText.setOrientation(LinearLayout.VERTICAL);
+            switchText.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            switchText.addView(rowTitle(context, "Включить белый список"));
+            switchText.addView(rowSummary(context,
+                    "Ограничивать подключения только разрешёнными устройствами"));
+            switchRow.addView(switchText);
+
+            Switch enableSwitch = new Switch(context);
+            enableSwitch.setChecked(enabled);
+            switchRow.addView(enableSwitch);
+            root.addView(switchRow);
+
+            root.addView(sectionLabel(context, "Разрешённые устройства"));
+            LinearLayout listCard = card(context);
             LinearLayout list = new LinearLayout(context);
             list.setOrientation(LinearLayout.VERTICAL);
-            box.addView(list);
+            listCard.addView(list);
+            root.addView(listCard);
+
+            Button add = nativeButton(context, "Добавить устройство");
+            root.addView(add);
+
+            LinearLayout bottom = dialogButtons(context);
+            TextView close = dialogButton(context, "ЗАКРЫТЬ");
+            bottom.addView(close);
+            root.addView(bottom);
 
             Runnable render = () -> renderMacList(context, list, allowed, "Разрешено", true);
             render.run();
 
-            Button add = new Button(context);
-            add.setText("Добавить MAC-адрес");
-            box.addView(add);
+            AlertDialog dialog = new AlertDialog.Builder(context).setView(root).create();
 
-            final AlertDialog dialog = new AlertDialog.Builder(context)
-                    .setTitle("Белый список")
-                    .setView(box)
-                    .setNegativeButton("Отмена", null)
-                    .setPositiveButton("Применить", null)
-                    .create();
+            Runnable applyNow = () -> {
+                try {
+                    Object latest = invoke(wifi, "getSoftApConfiguration");
+                    List<Object> blocked = copyList(
+                            invoke(latest, "getBlockedClientList"));
+                    boolean control = enableSwitch.isChecked() && !allowed.isEmpty();
+                    applyClientLists(wifi, control, allowed, blocked);
+                } catch (Throwable t) {
+                    showError(context, "Белый список", t);
+                }
+            };
 
             add.setOnClickListener(v -> askForMac(context, mac -> {
                 if (!containsMac(allowed, mac)) {
                     allowed.add(parseMac(mac));
+                    enableSwitch.setChecked(true);
+                    applyNow.run();
                     render.run();
                 }
             }));
 
-            dialog.setOnShowListener(d -> {
-                Button applyButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-                applyButton.setOnClickListener(v -> {
-                    try {
-                        applyClientLists(wifi, !allowed.isEmpty(), allowed,
-                                copyList(invoke(cfg, "getBlockedClientList")));
-                        dialog.dismiss();
-                    } catch (Throwable t) {
-                        showError(context, "Белый список", t);
-                    }
-                });
+            enableSwitch.setOnCheckedChangeListener((button, checked) -> {
+                if (checked && allowed.isEmpty()) {
+                    button.setChecked(false);
+                    showInfo(context, "Белый список",
+                            "Сначала добавьте хотя бы одно устройство.");
+                    return;
+                }
+                applyNow.run();
             });
+
+            close.setOnClickListener(v -> dialog.dismiss());
+            dialog.setOnDismissListener(d -> { });
             dialog.show();
+            sizeDialog(dialog, context, 0.94f, 0.78f);
         } catch (Throwable t) {
             showError(context, "Белый список", t);
         }
@@ -324,50 +363,63 @@ final class AdvancedHotspotUi {
             Object cfg = invoke(wifi, "getSoftApConfiguration");
             List<Object> blocked = copyList(invoke(cfg, "getBlockedClientList"));
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
-            boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
 
-            LinearLayout box = new LinearLayout(context);
-            box.setOrientation(LinearLayout.VERTICAL);
-            box.setPadding(28, 8, 28, 8);
-            box.addView(rowSummary(context,
+            LinearLayout root = dialogRoot(context);
+            root.addView(dialogTitle(context, "Заблокированные устройства"));
+            root.addView(rowSummary(context,
                     "Заблокированные устройства не смогут подключиться к точке доступа."));
+            root.addView(sectionLabel(context, "Заблокированные устройства"));
+
+            LinearLayout listCard = card(context);
             LinearLayout list = new LinearLayout(context);
             list.setOrientation(LinearLayout.VERTICAL);
-            box.addView(list);
+            listCard.addView(list);
+            root.addView(listCard);
 
-            Runnable render = () -> renderBlockedList(
-                    context, list, blocked, wifi, control, allowed);
+            Button add = nativeButton(context, "Добавить устройство");
+            root.addView(add);
+
+            LinearLayout bottom = dialogButtons(context);
+            TextView close = dialogButton(context, "ЗАКРЫТЬ");
+            bottom.addView(close);
+            root.addView(bottom);
+
+            Runnable render = () -> renderBlockedList(context, list, blocked, wifi);
             render.run();
 
-            Button add = new Button(context);
-            add.setText("Добавить MAC-адрес");
-            box.addView(add);
-
-            AlertDialog dialog = new AlertDialog.Builder(context)
-                    .setTitle("Заблокированные устройства")
-                    .setView(box)
-                    .setNegativeButton("Закрыть", null)
-                    .create();
+            AlertDialog dialog = new AlertDialog.Builder(context).setView(root).create();
 
             add.setOnClickListener(v -> askForMac(context, mac -> {
                 if (!containsMac(blocked, mac)) {
-                    blocked.add(parseMac(mac));
                     try {
-                        applyClientLists(wifi, control, allowed, blocked);
+                        Object latest = invoke(wifi, "getSoftApConfiguration");
+                        List<Object> latestBlocked = copyList(
+                                invoke(latest, "getBlockedClientList"));
+                        List<Object> latestAllowed = copyList(
+                                invoke(latest, "getAllowedClientList"));
+                        latestBlocked.add(parseMac(mac));
+                        boolean control = readBoolean(
+                                latest, "isClientControlByUserEnabled", false);
+                        applyClientLists(wifi, control, latestAllowed, latestBlocked);
+                        blocked.clear();
+                        blocked.addAll(latestBlocked);
                         render.run();
                     } catch (Throwable t) {
                         showError(context, "Блокировка", t);
                     }
                 }
             }));
+
+            close.setOnClickListener(v -> dialog.dismiss());
             dialog.show();
+            sizeDialog(dialog, context, 0.94f, 0.78f);
         } catch (Throwable t) {
             showError(context, "Блокировка", t);
         }
     }
 
     private static void renderBlockedList(Context context, LinearLayout list,
-            List<Object> blocked, Object wifi, boolean control, List<Object> allowed) {
+            List<Object> blocked, Object wifi) {
         list.removeAllViews();
         if (blocked.isEmpty()) {
             list.addView(rowSummary(context, "Список пуст"));
@@ -375,13 +427,17 @@ final class AdvancedHotspotUi {
         }
         for (Object item : new ArrayList<>(blocked)) {
             String mac = macString(item);
-            LinearLayout row = new LinearLayout(context);
-            row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(0, 12, 0, 12);
-            row.addView(rowTitle(context, deviceName(mac)));
-            row.addView(rowSummary(context, mac));
+            LinearLayout row = listRow(context);
+            LinearLayout texts = textColumn(context);
+            texts.addView(rowTitle(context, deviceName(mac)));
+            texts.addView(rowSummary(context, mac));
+            row.addView(texts, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
             TextView unblock = smallAction(context, "Разблокировать");
             row.addView(unblock);
+            list.addView(row);
+
             unblock.setOnClickListener(v -> {
                 try {
                     Object latest = invoke(wifi, "getSoftApConfiguration");
@@ -389,24 +445,25 @@ final class AdvancedHotspotUi {
                             invoke(latest, "getBlockedClientList"));
                     List<Object> latestAllowed = copyList(
                             invoke(latest, "getAllowedClientList"));
-                    boolean latestControl = readBoolean(
+                    boolean control = readBoolean(
                             latest, "isClientControlByUserEnabled", false);
+
                     latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
-                    if (latestControl && !containsMac(latestAllowed, mac)) {
+
+                    // If allow-list mode is active, restoring the device to the
+                    // allowed list is what makes it immediately usable again.
+                    if (control && !containsMac(latestAllowed, mac)) {
                         latestAllowed.add(parseMac(mac));
                     }
-                    applyClientLists(wifi, latestControl, latestAllowed, latestBlocked);
+
+                    applyClientLists(wifi, control, latestAllowed, latestBlocked);
                     blocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
-                    allowed.clear();
-                    allowed.addAll(latestAllowed);
-                    renderBlockedList(context, list, blocked, wifi,
-                            latestControl, allowed);
+                    renderBlockedList(context, list, blocked, wifi);
                     note("CLIENT_UNBLOCKED");
                 } catch (Throwable t) {
                     showError(context, "Разблокировка", t);
                 }
             });
-            list.addView(row);
         }
     }
 
@@ -414,48 +471,76 @@ final class AdvancedHotspotUi {
             List<Object> macs, String prefix, boolean removable) {
         list.removeAllViews();
         if (macs.isEmpty()) {
-            TextView empty = new TextView(context);
-            empty.setText("Список пуст");
-            list.addView(empty);
+            list.addView(rowSummary(context, "Список пуст"));
             return;
         }
-        for (Object mac : new ArrayList<>(macs)) {
-            LinearLayout row = new LinearLayout(context);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayout textBox = new LinearLayout(context);
-            textBox.setOrientation(LinearLayout.VERTICAL);
-            textBox.addView(rowTitle(context, deviceName(macString(mac))));
-            textBox.addView(rowSummary(context, macString(mac)));
-            row.addView(textBox, new LinearLayout.LayoutParams(0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-            Button remove = new Button(context);
-            remove.setText("Заблокировано".equals(prefix) ? "Разблокировать" : "Удалить");
-            remove.setOnClickListener(v -> {
-                macs.remove(mac);
-                renderMacList(context, list, macs, prefix, removable);
-            });
-            row.addView(remove);
+        for (Object macObject : new ArrayList<>(macs)) {
+            String mac = macString(macObject);
+            LinearLayout row = listRow(context);
+            LinearLayout texts = textColumn(context);
+            texts.addView(rowTitle(context, deviceName(mac)));
+            texts.addView(rowSummary(context, mac));
+            row.addView(texts, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            if (removable) {
+                TextView remove = smallAction(context, "Удалить");
+                row.addView(remove);
+                remove.setOnClickListener(v -> {
+                    macs.remove(macObject);
+                    list.post(() -> {
+                        try {
+                            Object wifi = context.getSystemService(Context.WIFI_SERVICE);
+                            Object latest = invoke(wifi, "getSoftApConfiguration");
+                            List<Object> blocked = copyList(
+                                    invoke(latest, "getBlockedClientList"));
+                            boolean control = !macs.isEmpty()
+                                    && readBoolean(latest,
+                                    "isClientControlByUserEnabled", false);
+                            applyClientLists(wifi, control, macs, blocked);
+                            renderMacList(context, list, macs, prefix, removable);
+                        } catch (Throwable t) {
+                            showError(context, "Белый список", t);
+                        }
+                    });
+                });
+            }
             list.addView(row);
         }
     }
 
     private static void askForMac(Context context, MacConsumer consumer) {
+        LinearLayout root = dialogRoot(context);
+        root.addView(dialogTitle(context, "Добавить устройство"));
+        root.addView(rowSummary(context, "Укажите MAC-адрес устройства."));
         EditText edit = new EditText(context);
         edit.setSingleLine(true);
         edit.setHint("AA:BB:CC:DD:EE:FF");
         edit.setInputType(InputType.TYPE_CLASS_TEXT);
-        new AlertDialog.Builder(context)
-                .setTitle("MAC-адрес")
-                .setView(edit)
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Добавить", (d, which) -> {
-                    String mac = edit.getText().toString().trim();
-                    if (!isMac(mac)) {
-                        edit.setError("Формат AA:BB:CC:DD:EE:FF");
-                        return;
-                    }
-                    consumer.accept(mac.toUpperCase());
-                }).show();
+        edit.setTextSize(18);
+        edit.setPadding(0, 12, 0, 12);
+        root.addView(edit);
+
+        LinearLayout bottom = dialogButtons(context);
+        TextView cancel = dialogButton(context, "ОТМЕНА");
+        TextView add = dialogButton(context, "ДОБАВИТЬ");
+        bottom.addView(cancel);
+        bottom.addView(add);
+        root.addView(bottom);
+
+        AlertDialog dialog = new AlertDialog.Builder(context).setView(root).create();
+        cancel.setOnClickListener(v -> dialog.dismiss());
+        add.setOnClickListener(v -> {
+            String mac = edit.getText().toString().trim();
+            if (!isMac(mac)) {
+                edit.setError("Формат AA:BB:CC:DD:EE:FF");
+                return;
+            }
+            consumer.accept(mac.toUpperCase());
+            dialog.dismiss();
+        });
+        dialog.show();
+        sizeDialog(dialog, context, 0.92f, 0.42f);
     }
 
     private static void allowClient(Context context, String mac) {
@@ -768,6 +853,92 @@ final class AdvancedHotspotUi {
         handle.tetheringCallback = null;
     }
 
+    private static LinearLayout dialogRoot(Context context) {
+        LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(28, 20, 28, 10);
+        root.setBackground(roundBackground(0xFFFFFFFF, 28));
+        return root;
+    }
+
+    private static TextView dialogTitle(Context context, String text) {
+        TextView v = rowTitle(context, text);
+        v.setTextSize(24);
+        v.setTypeface(null, android.graphics.Typeface.BOLD);
+        v.setPadding(0, 0, 0, 8);
+        return v;
+    }
+
+    private static LinearLayout dialogButtons(Context context) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        row.setPadding(0, 4, 0, 0);
+        return row;
+    }
+
+    private static Button nativeButton(Context context, String text) {
+        Button b = new Button(context);
+        b.setText(text);
+        b.setTextSize(14);
+        b.setAllCaps(true);
+        b.setMinHeight(48);
+        b.setPadding(18, 4, 18, 4);
+        setNativeRipple(b);
+        return b;
+    }
+
+    private static LinearLayout listRow(Context context) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(8, 10, 4, 10);
+        setNativeRipple(row);
+        return row;
+    }
+
+    private static LinearLayout textColumn(Context context) {
+        LinearLayout column = new LinearLayout(context);
+        column.setOrientation(LinearLayout.VERTICAL);
+        return column;
+    }
+
+    private static void setNativeRipple(View view) {
+        try {
+            TypedValue out = new TypedValue();
+            Context context = view.getContext();
+            if (context.getTheme().resolveAttribute(
+                    android.R.attr.selectableItemBackground, out, true)
+                    && out.resourceId != 0) {
+                view.setBackgroundResource(out.resourceId);
+            }
+        } catch (Throwable ignored) { }
+    }
+
+    private static void sizeDialog(AlertDialog dialog, Context context,
+            float widthRatio, float heightRatio) {
+        if (dialog.getWindow() == null) return;
+        dialog.getWindow().setBackgroundDrawable(
+                new ColorDrawable(Color.TRANSPARENT));
+        dialog.getWindow().setLayout(
+                (int) (context.getResources().getDisplayMetrics().widthPixels * widthRatio),
+                (int) (context.getResources().getDisplayMetrics().heightPixels * heightRatio));
+    }
+
+    private static void showInfo(Context context, String title, String message) {
+        LinearLayout root = dialogRoot(context);
+        root.addView(dialogTitle(context, title));
+        root.addView(rowSummary(context, message));
+        LinearLayout bottom = dialogButtons(context);
+        TextView ok = dialogButton(context, "OK");
+        bottom.addView(ok);
+        root.addView(bottom);
+        AlertDialog dialog = new AlertDialog.Builder(context).setView(root).create();
+        ok.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
+        sizeDialog(dialog, context, 0.90f, 0.34f);
+    }
+
     private static String deviceName(String mac) {
         if (mac != null) {
             String name = CLIENT_NAMES.get(mac.toUpperCase());
@@ -797,6 +968,7 @@ final class AdvancedHotspotUi {
         v.setTextSize(16);
         v.setPadding(20, 16, 20, 16);
         v.setBackground(roundBackground(0xFFFFFFFF, 22));
+        setNativeRipple(v);
         v.setClickable(true);
         v.setFocusable(true);
         return v;
@@ -901,13 +1073,6 @@ final class AdvancedHotspotUi {
         TextView v = new TextView(c);
         v.setText(text);
         v.setPadding(0, 12, 0, 2);
-        return v;
-    }
-
-    private static CheckBox check(Context c, String text, boolean value) {
-        CheckBox v = new CheckBox(c);
-        v.setText(text);
-        v.setChecked(value);
         return v;
     }
 
