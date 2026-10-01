@@ -1,32 +1,46 @@
 # RMX3830 Hotspot Enhancer
 
-Advanced hotspot controls injected into the native Realme/Android hotspot Settings screen.
+Advanced hotspot controls injected directly into the native Realme/Android hotspot Settings screen.
 
 **Release:** 1.0.0  
 **Developer:** KoroZzi  
-**Target:** realme C51 (RMX3830), Android 15 / realme UI  
+**Target device:** realme C51 (RMX3830)  
+**Android:** Android 15 / realme UI  
 **Architecture:** Magisk + LSPosed-Irena
 
 ## Features
 
-- Connected-device count and live list.
-- Hostname, IP and MAC when Android/Tethering provides them.
-- Temporary disconnect, allow and block actions.
-- White list with a manual enable switch.
-- Black list with unblock support.
-- Device limit: 1–10.
-- Configurable hotspot idle auto-shutdown.
-- Device isolation when supported by the firmware.
-- Native-style buttons, separators and touch feedback.
-- Full-screen advanced settings interface.
+The module adds **Advanced hotspot settings** to the existing system hotspot Settings page. It does not add a separate launcher application.
 
-Stock Realme controls such as SSID, password, security, band, hidden SSID and compatibility remain in the native Settings UI.
+### Connected devices
+- Live connected-device count.
+- Device hostname when Android/Tethering provides it.
+- IP address when available.
+- MAC address.
+- Disconnect a connected device.
+- Add a connected device to the allow list.
+- Block a connected device.
+
+### Access lists
+- **White list** — maintain allowed devices.
+- Manual **Enable white list** switch.
+- Adding a device does **not** enable the white list automatically.
+- Removing a device updates the configuration immediately.
+- **Black list** — maintain blocked devices.
+- Unblock devices from the black list.
+
+### Additional settings
+- **Device limit:** 1–10 devices.
+- **Auto shutdown:** configurable idle timeout.
+- **Device isolation:** prevents connected devices from exchanging traffic directly when supported by the firmware.
+
+The module leaves the stock hotspot controls such as SSID, password, security, band, hidden SSID and compatibility in the native Realme Settings UI.
 
 ## Requirements
 
 - realme C51 RMX3830
 - Android 15 / realme UI
-- Magisk root
+- Unlocked/rooted device with Magisk
 - LSPosed-Irena with modern API support
 - LSPosed scope: `system` and `com.android.settings`
 
@@ -34,25 +48,38 @@ Stock Realme controls such as SSID, password, security, band, hidden SSID and co
 
 1. Install the Magisk ZIP from the 1.0.0 release.
 2. Reboot.
-3. Open the native hotspot settings.
+3. Open **Settings → Personal hotspot / Hotspot settings**.
 4. Open **Advanced hotspot settings**.
+5. Configure the required options.
 
 No separate launcher application is required.
 
-## Notes
+## Important
 
-Hardware and firmware capabilities are device-dependent. The RMX3830 firmware reports a maximum Soft AP client resource of 10.
+Hardware and firmware capabilities are device-dependent. The module only exposes functions that can be handled by the Android/Realme Wi-Fi framework on the device.
 
-If a connected device does not provide a hostname through Android tethering information, the module cannot invent its real device name; available IP and MAC information can still be displayed.
+The maximum client limit reported by the RMX3830 firmware is 10.
 
-For debugging: `logcat -d -s RMX3830Hotspot:I '*:S'`
+If a connected device does not provide a hostname through Android tethering information, the UI cannot invent its real device name. IP and MAC information may still be shown.
+
+## Troubleshooting
+
+If the advanced entry does not appear, verify that the LSPosed module is enabled for both `system` and `com.android.settings`, then reboot.
+
+Debug command:
+
+```sh
+logcat -d -s RMX3830Hotspot:I '*:S'
+```
 
 ## Project status
 
-**1.0.0 is the first public release.** Future changes should use new versioned releases.
+**1.0.0 is the first public release.**
+
+The 1.0.0 release is the stable baseline for the RMX3830 project. Future changes can be published as new versioned releases.
 
 ## Developer
 
 **KoroZzi**
 
-Repository: https://github.com/korozzi/RMX3830-Hotspot-Enhancer
+Project: https://github.com/korozzi/RMX3830-Hotspot-Enhancer
