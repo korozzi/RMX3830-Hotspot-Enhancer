@@ -305,7 +305,7 @@ final class AdvancedHotspotUi {
                 Button applyButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
                 applyButton.setOnClickListener(v -> {
                     try {
-                        applyClientLists(wifi, !allowed.isEmpty() || !copyList(invoke(cfg, "getBlockedClientList")).isEmpty(), allowed,
+                        applyClientLists(wifi, !allowed.isEmpty(), allowed,
                                 copyList(invoke(cfg, "getBlockedClientList")));
                         dialog.dismiss();
                     } catch (Throwable t) {
@@ -422,9 +422,11 @@ final class AdvancedHotspotUi {
         for (Object mac : new ArrayList<>(macs)) {
             LinearLayout row = new LinearLayout(context);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            TextView text = new TextView(context);
-            text.setText(prefix + ": " + macString(mac));
-            row.addView(text, new LinearLayout.LayoutParams(0,
+            LinearLayout textBox = new LinearLayout(context);
+            textBox.setOrientation(LinearLayout.VERTICAL);
+            textBox.addView(rowTitle(context, deviceName(macString(mac))));
+            textBox.addView(rowSummary(context, macString(mac)));
+            row.addView(textBox, new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             Button remove = new Button(context);
             remove.setText("Заблокировано".equals(prefix) ? "Разблокировать" : "Удалить");
@@ -504,8 +506,9 @@ final class AdvancedHotspotUi {
                     List<Object> latestBlocked = copyList(invoke(latest, "getBlockedClientList"));
                     latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
                     List<Object> latestAllowed = copyList(invoke(latest, "getAllowedClientList"));
-                    applyClientLists(wifi, !latestAllowed.isEmpty() || !latestBlocked.isEmpty(),
-                            latestAllowed, latestBlocked);
+                    boolean latestControl = readBoolean(
+                            latest, "isClientControlByUserEnabled", false);
+                    applyClientLists(wifi, latestControl, latestAllowed, latestBlocked);
                     note("CLIENT_FORCE_DISCONNECT_RELEASED");
                 } catch (Throwable t) {
                     Log.i(TAG, "CLIENT_FORCE_DISCONNECT_RELEASE_FAILED "
