@@ -32,6 +32,7 @@ final class AdvancedHotspotUi {
     private static final String TAG = "RMX3830Hotspot";
     private static final long CLIENT_FORCE_DISCONNECT_DELAY_MS = 2500L;
     private static final Map<String, String> CLIENT_NAMES = new HashMap<>();
+    private static final Map<String, String> CLIENT_IPS = new HashMap<>();
 
     private AdvancedHotspotUi() {}
 
@@ -55,7 +56,7 @@ final class AdvancedHotspotUi {
             invoke(pref, "setKey", PREF_KEY);
             invoke(pref, "setTitle", "Расширенные настройки точки доступа");
             invoke(pref, "setSummary",
-                    "Лимит клиентов, устройства, списки доступа, отключение и изоляция");
+                    "Лимит устройств, списки доступа и дополнительные параметры");
             invoke(pref, "setOrder", 999);
 
             Class<?> listenerClass = Class.forName(
@@ -98,8 +99,8 @@ final class AdvancedHotspotUi {
 
             LinearLayout root = new LinearLayout(context);
             root.setOrientation(LinearLayout.VERTICAL);
-            root.setPadding(28, 20, 28, 8);
-            root.setBackground(roundBackground(0xFFFFFFFF, 28));
+            root.setPadding(28, 24, 28, 12);
+            root.setBackgroundColor(0xFFFFFFFF);
 
             TextView title = rowTitle(context, "Расширенные настройки точки доступа");
             title.setTextSize(24);
@@ -119,23 +120,20 @@ final class AdvancedHotspotUi {
             LinearLayout clientList = new LinearLayout(context);
             clientList.setOrientation(LinearLayout.VERTICAL);
             clientsCard.addView(clientList);
-            TextView refreshClients = actionRow(context, "Обновить список",
-                    "Показать текущее состояние точки доступа");
+            TextView refreshClients = actionRow(context, "Обновить список", "");
             clientsCard.addView(refreshClients);
             content.addView(clientsCard);
 
             content.addView(sectionLabel(context, "Управление устройствами"));
-            TextView whitelistButton = actionRow(context, "Белый список",
-                    "Устройства, которым разрешено подключаться");
-            TextView blockedButton = actionRow(context, "Заблокированные устройства",
-                    "Устройства, которым запрещено подключение");
+            TextView whitelistButton = actionRow(context, "Белый список", "");
+            TextView blockedButton = actionRow(context, "Черный список", "");
             content.addView(whitelistButton);
             content.addView(blockedButton);
 
             content.addView(sectionLabel(context, "Дополнительные параметры"));
             LinearLayout settingsCard = card(context);
-            LinearLayout maxRow = valueRow(context, "Максимум клиентов", "1–10", initialClients);
-            LinearLayout timeoutRow = valueRow(context, "Отключать после простоя", "минуты", initialTimeout);
+            LinearLayout maxRow = valueRow(context, "Лимит устройств", "1–10", initialClients);
+            LinearLayout timeoutRow = valueRow(context, "Автоотключение", "минуты", initialTimeout);
             settingsCard.addView(maxRow);
             settingsCard.addView(timeoutRow);
             EditText maxEdit = (EditText) maxRow.getChildAt(1);
@@ -223,10 +221,16 @@ final class AdvancedHotspotUi {
             dialog.setOnDismissListener(d -> unregisterClientCallback(wifi, callback));
             dialog.show();
             if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.WHITE));
                 dialog.getWindow().setLayout(
-                        (int) (context.getResources().getDisplayMetrics().widthPixels * 0.96f),
-                        (int) (context.getResources().getDisplayMetrics().heightPixels * 0.93f));
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.MATCH_PARENT);
+                dialog.getWindow().setDimAmount(0f);
+                dialog.getWindow().setStatusBarColor(Color.WHITE);
+                dialog.getWindow().setNavigationBarColor(Color.WHITE);
+                dialog.getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                                | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
             }
             note("SETTINGS_ADVANCED_DIALOG_SHOWN");
         } catch (Throwable t) {
@@ -249,7 +253,7 @@ final class AdvancedHotspotUi {
             row.setOrientation(LinearLayout.VERTICAL);
             row.setPadding(0, 12, 0, 12);
             row.addView(rowTitle(counter.getContext(), deviceName(mac)));
-            row.addView(rowSummary(counter.getContext(), mac));
+            row.addView(rowSummary(counter.getContext(), deviceDetails(mac)));
 
             LinearLayout actions = new LinearLayout(counter.getContext());
             actions.setGravity(Gravity.END);
@@ -333,8 +337,6 @@ final class AdvancedHotspotUi {
             add.setOnClickListener(v -> askForMac(context, mac -> {
                 if (!containsMac(allowed, mac)) {
                     allowed.add(parseMac(mac));
-                    enableSwitch.setChecked(true);
-                    applyNow.run();
                     render.run();
                 }
             }));
@@ -799,24 +801,44 @@ final class AdvancedHotspotUi {
                             for (Object client : (Iterable<?>) args[0]) {
                                 try {
                                     String mac = macString(invoke(client, "getMacAddress"));
+                                    String key = mac.toUpperCase();
                                     Object addresses = invoke(client, "getAddresses");
+                                    String hostname = null;
+                                    String ip = null;
                                     if (addresses instanceof Iterable) {
                                         for (Object address : (Iterable<?>) addresses) {
-                                            Object value = invoke(address, "getHostname");
-                                            if (value != null) {
-                                                String hostname = String.valueOf(value).trim();
-                                                if (!hostname.isEmpty()) {
-                                                    CLIENT_NAMES.put(mac.toUpperCase(), hostname);
-                                                    if (handle.counter != null && handle.list != null
-                                                            && handle.maxEdit != null) {
-                                                        refreshClientsFromCallback(handle.counter,
-                                                                handle.list, handle.maxEdit,
-                                                                handle.clients, handle);
-                                                    }
-                                                    break;
+                                            try {
+                                                Object value = invoke(address, "getHostname");
+                                                if (value != null) {
+                                                    String candidate = String.valueOf(value).trim();
+                                                    if (!candidate.isEmpty()) hostname = candidate;
                                                 }
-                                            }
+                                            } catch (Throwable ignored) { }
+                                            try {
+                                                Object linkAddress = invoke(address, "getAddress");
+                                                Object inetAddress = invoke(linkAddress, "getAddress");
+                                                Object hostAddress = invoke(inetAddress, "getHostAddress");
+                                                if (hostAddress != null) {
+                                                    String candidate = String.valueOf(hostAddress).trim();
+                                                    if (!candidate.isEmpty() && ip == null) ip = candidate;
+                                                }
+                                            } catch (Throwable ignored) { }
                                         }
+                                    }
+                                    if (hostname != null && !hostname.isEmpty()) {
+                                        CLIENT_NAMES.put(key, hostname);
+                                    }
+                                    if (ip != null && !ip.isEmpty()) {
+                                        CLIENT_IPS.put(key, ip);
+                                    }
+                                    note("CLIENT_INFO mac=" + key
+                                            + " hostname=" + String.valueOf(hostname)
+                                            + " ip=" + String.valueOf(ip));
+                                    if (handle.counter != null && handle.list != null
+                                            && handle.maxEdit != null) {
+                                        refreshClientsFromCallback(handle.counter,
+                                                handle.list, handle.maxEdit,
+                                                handle.clients, handle);
                                     }
                                 } catch (Throwable ignored) { }
                             }
@@ -943,8 +965,20 @@ final class AdvancedHotspotUi {
         if (mac != null) {
             String name = CLIENT_NAMES.get(mac.toUpperCase());
             if (name != null && !name.isEmpty()) return name;
+            String ip = CLIENT_IPS.get(mac.toUpperCase());
+            if (ip != null && !ip.isEmpty()) return "Устройство • " + ip;
         }
-        return "Устройство";
+        return "Имя не передано";
+    }
+
+    private static String deviceDetails(String mac) {
+        StringBuilder out = new StringBuilder();
+        if (mac != null) {
+            String ip = CLIENT_IPS.get(mac.toUpperCase());
+            if (ip != null && !ip.isEmpty()) out.append("IP: ").append(ip).append("\n");
+            out.append("MAC: ").append(mac);
+        }
+        return out.toString();
     }
 
     private static TextView sectionLabel(Context context, String text) {
@@ -964,7 +998,7 @@ final class AdvancedHotspotUi {
 
     private static TextView actionRow(Context context, String title, String summary) {
         TextView v = rowTitle(context, title);
-        v.setText(title + "\n" + summary);
+        v.setText(summary == null || summary.isEmpty() ? title : title + "\n" + summary);
         v.setTextSize(16);
         v.setPadding(20, 16, 20, 16);
         v.setBackground(roundBackground(0xFFFFFFFF, 22));
