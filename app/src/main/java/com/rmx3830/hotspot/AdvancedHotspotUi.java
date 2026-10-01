@@ -120,7 +120,7 @@ final class AdvancedHotspotUi {
             LinearLayout clientList = new LinearLayout(context);
             clientList.setOrientation(LinearLayout.VERTICAL);
             clientsCard.addView(clientList);
-            TextView refreshClients = actionRow(context, "Обновить список", "");
+            Button refreshClients = nativeButton(context, "Обновить список");
             clientsCard.addView(refreshClients);
             content.addView(clientsCard);
 
@@ -128,6 +128,7 @@ final class AdvancedHotspotUi {
             TextView whitelistButton = actionRow(context, "Белый список", "");
             TextView blockedButton = actionRow(context, "Черный список", "");
             content.addView(whitelistButton);
+            content.addView(separator(context));
             content.addView(blockedButton);
 
             content.addView(sectionLabel(context, "Дополнительные параметры"));
@@ -149,9 +150,9 @@ final class AdvancedHotspotUi {
             isolationTexts.setOrientation(LinearLayout.VERTICAL);
             isolationTexts.setLayoutParams(new LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-            isolationTexts.addView(rowTitle(context, "Изоляция клиентов"));
+            isolationTexts.addView(rowTitle(context, "Изоляция устройств"));
             isolationTexts.addView(rowSummary(context, isolationSupported
-                    ? "Клиенты не смогут обмениваться трафиком напрямую"
+                    ? "Подключённые устройства не смогут обмениваться данными напрямую"
                     : "Недоступно в текущей прошивке"));
             isolationRow.addView(isolationTexts);
             Switch isolationSwitch = new Switch(context);
@@ -994,6 +995,14 @@ final class AdvancedHotspotUi {
         card.setPadding(20, 4, 20, 4);
         card.setBackground(roundBackground(0xFFFFFFFF, 22));
         return card;
+    }
+
+    private static View separator(Context context) {
+        View line = new View(context);
+        line.setBackgroundColor(0xFFE4E4E4);
+        line.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        return line;
     }
 
     private static TextView actionRow(Context context, String title, String summary) {
