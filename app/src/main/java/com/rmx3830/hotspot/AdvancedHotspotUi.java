@@ -367,10 +367,10 @@ final class AdvancedHotspotUi {
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
 
             LinearLayout root = dialogRoot(context);
-            root.addView(dialogTitle(context, "Заблокированные устройства"));
+            root.addView(dialogTitle(context, "Черный список"));
             root.addView(rowSummary(context,
                     "Заблокированные устройства не смогут подключиться к точке доступа."));
-            root.addView(sectionLabel(context, "Заблокированные устройства"));
+            root.addView(sectionLabel(context, "Устройства в черном списке"));
 
             LinearLayout listCard = card(context);
             LinearLayout list = new LinearLayout(context);
