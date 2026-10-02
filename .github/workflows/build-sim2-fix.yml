@@ -1,0 +1,24 @@
+name: Build RMX3830 SIM2 CarrierConfig Fix
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'sim2-carrierfix/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Magisk ZIP
+        run: |
+          chmod +x sim2-carrierfix/build.sh
+          sim2-carrierfix/build.sh
+
+      - name: Upload Magisk ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: RMX3830-SIM2-CarrierFix
+          path: dist/RMX3830_SIM2_CarrierFix_v1.1.0.zip

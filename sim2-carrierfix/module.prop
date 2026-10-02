@@ -1,0 +1,6 @@
+id=rmx3830_sim2_carrierfix
+name=RMX3830 SIM2 CarrierConfig Fix
+version=1.1.0
+versionCode=110
+author=KoroZzi
+description=RMX3830 SIM2 CarrierConfig recovery for phoneId=1. Clears stale Beeline 43404 carrier cache without touching NV, EFS or IMEI.
