@@ -2,7 +2,7 @@
 
 Advanced hotspot controls injected directly into the native Realme/Android hotspot Settings screen.
 
-**Release:** 1.0.0  
+**Source version:** 1.0.1 (audit branch; not yet device-validated)  
 **Developer:** KoroZzi  
 **Target device:** realme C51 (RMX3830)  
 **Android:** Android 15 / realme UI  
@@ -46,7 +46,7 @@ The module leaves the stock hotspot controls such as SSID, password, security, b
 
 ## Installation
 
-1. Install the Magisk ZIP from the 1.0.0 release.
+1. Install the ZIP artifact attached to the intended release. Do not package an APK from a debug build.
 2. Reboot.
 3. Open **Settings → Personal hotspot / Hotspot settings**.
 4. Open **Advanced hotspot settings**.
@@ -74,9 +74,17 @@ logcat -d -s RMX3830Hotspot:I '*:S'
 
 ## Project status
 
-**1.0.0 is the first public release.**
+**1.0.0 is the first public release.** The `audit/hardening-v1.0.1` branch contains source-level fixes and is not a published or device-validated release.
 
-The 1.0.0 release is the stable baseline for the RMX3830 project. Future changes can be published as new versioned releases.
+### Audit changes in 1.0.1 source
+- Explicitly disable Android debugging in the release build type.
+- Persist allow-list edits immediately without silently enabling allow-list mode.
+- Keep device MAC addresses, IP addresses and hostnames out of logcat.
+- Prevent temporary disconnect from removing a block that existed before the action.
+- Make “Unblock” remove only the block-list entry; allow-list membership remains a separate user choice.
+
+### Validation status
+These changes have been reviewed statically, but have **not** been built or tested on an RMX3830 device in this environment. The repository currently has no Gradle wrapper checked in, so a reproducible build should be run with a compatible local Gradle/Android SDK setup or a wrapper should be added before release. Verify that the packaged APK is a release build and test client management, both access lists, hotspot restart, and isolation on the target firmware before publishing.
 
 ## Developer
 
