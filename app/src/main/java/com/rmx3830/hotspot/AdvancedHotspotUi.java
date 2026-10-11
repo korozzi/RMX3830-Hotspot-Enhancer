@@ -336,10 +336,13 @@ final class AdvancedHotspotUi {
             };
 
             add.setOnClickListener(v -> askForMac(context, mac -> {
-                if (!containsMac(allowed, mac)) {
-                    allowed.add(parseMac(mac));
-                    render.run();
-                }
+                if (containsMac(allowed, mac)) return;
+                allowed.add(parseMac(mac));
+                render.run();
+                // Persist the edited list immediately, while preserving the user's
+                // current enable/disable choice. Adding an entry must not enable
+                // allow-list mode by itself.
+                applyNow.run();
             }));
 
             enableSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -453,12 +456,8 @@ final class AdvancedHotspotUi {
 
                     latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
 
-                    // If allow-list mode is active, restoring the device to the
-                    // allowed list is what makes it immediately usable again.
-                    if (control && !containsMac(latestAllowed, mac)) {
-                        latestAllowed.add(parseMac(mac));
-                    }
-
+                    // Unblocking only removes the deny-list entry. Do not silently
+                    // grant allow-list membership; that remains a separate user action.
                     applyClientLists(wifi, control, latestAllowed, latestBlocked);
                     blocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
                     renderBlockedList(context, list, blocked, wifi);
@@ -554,7 +553,8 @@ final class AdvancedHotspotUi {
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
             blocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
             if (!containsMac(allowed, mac)) allowed.add(parseMac(mac));
-            applyClientLists(wifi, true, allowed, blocked);
+            boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
+            applyClientLists(wifi, control, allowed, blocked);
             note("CLIENT_ALLOWED");
         } catch (Throwable t) {
             showError(context, "Белый список", t);
@@ -584,25 +584,31 @@ final class AdvancedHotspotUi {
             List<Object> blocked = copyList(invoke(cfg, "getBlockedClientList"));
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
             boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
-            if (!containsMac(blocked, mac)) blocked.add(parseMac(mac));
+            // Do not remove a pre-existing block when the temporary disconnect ends.
+            boolean temporaryBlockAdded = !containsMac(blocked, mac);
+            if (temporaryBlockAdded) blocked.add(parseMac(mac));
             applyClientLists(wifi, control, allowed, blocked);
             note("CLIENT_FORCE_DISCONNECT_REQUEST");
 
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                try {
-                    Object latest = invoke(wifi, "getSoftApConfiguration");
-                    List<Object> latestBlocked = copyList(invoke(latest, "getBlockedClientList"));
-                    latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
-                    List<Object> latestAllowed = copyList(invoke(latest, "getAllowedClientList"));
-                    boolean latestControl = readBoolean(
-                            latest, "isClientControlByUserEnabled", false);
-                    applyClientLists(wifi, latestControl, latestAllowed, latestBlocked);
-                    note("CLIENT_FORCE_DISCONNECT_RELEASED");
-                } catch (Throwable t) {
-                    Log.i(TAG, "CLIENT_FORCE_DISCONNECT_RELEASE_FAILED "
-                            + t.getClass().getSimpleName());
-                }
-            }, CLIENT_FORCE_DISCONNECT_DELAY_MS);
+            if (temporaryBlockAdded) {
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    try {
+                        Object latest = invoke(wifi, "getSoftApConfiguration");
+                        List<Object> latestBlocked = copyList(
+                                invoke(latest, "getBlockedClientList"));
+                        latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
+                        List<Object> latestAllowed = copyList(
+                                invoke(latest, "getAllowedClientList"));
+                        boolean latestControl = readBoolean(
+                                latest, "isClientControlByUserEnabled", false);
+                        applyClientLists(wifi, latestControl, latestAllowed, latestBlocked);
+                        note("CLIENT_FORCE_DISCONNECT_RELEASED");
+                    } catch (Throwable t) {
+                        Log.i(TAG, "CLIENT_FORCE_DISCONNECT_RELEASE_FAILED "
+                                + t.getClass().getSimpleName());
+                    }
+                }, CLIENT_FORCE_DISCONNECT_DELAY_MS);
+            }
         } catch (Throwable t) {
             showError(context, "Отключение клиента", t);
         }
@@ -832,9 +838,9 @@ final class AdvancedHotspotUi {
                                     if (ip != null && !ip.isEmpty()) {
                                         CLIENT_IPS.put(key, ip);
                                     }
-                                    note("CLIENT_INFO mac=" + key
-                                            + " hostname=" + String.valueOf(hostname)
-                                            + " ip=" + String.valueOf(ip));
+                                    // Device identifiers and hostnames are private
+                                    // network metadata; keep them out of logcat.
+                                    note("CLIENT_INFO_UPDATED");
                                     if (handle.counter != null && handle.list != null
                                             && handle.maxEdit != null) {
                                         refreshClientsFromCallback(handle.counter,

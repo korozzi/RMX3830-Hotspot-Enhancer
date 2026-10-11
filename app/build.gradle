@@ -8,8 +8,8 @@ android {
         applicationId 'com.rmx3830.hotspot'
         minSdk 26
         targetSdk 35
-        versionCode 103
-        versionName '1.0.0'
+        versionCode 104
+        versionName '1.0.1'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -17,7 +17,10 @@ android {
     }
     buildTypes {
         debug { minifyEnabled false }
-        release { minifyEnabled false }
+        release {
+            debuggable false
+            minifyEnabled false
+        }
     }
     packaging {
         resources {
