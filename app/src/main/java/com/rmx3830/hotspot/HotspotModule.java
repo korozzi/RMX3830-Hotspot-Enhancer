@@ -5,9 +5,9 @@ import android.util.Log;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import io.github.libxposed.api.XposedModule;
 import io.github.libxposed.api.XposedModuleInterface;
 
@@ -32,7 +32,7 @@ public final class HotspotModule extends XposedModule {
         "com.android.settings.TetherSettings",
         "com.android.settings.network.TetherSettings"
     };
-    private static final Set<String> OBSERVER_HOOKS = new HashSet<>();
+    private static final Set<String> OBSERVER_HOOKS = ConcurrentHashMap.newKeySet();
     private static boolean classLoaderHookInstalled;
     private static boolean wifiJarHookInstalled;
     private static boolean settingsUiHookInstalled;
@@ -207,9 +207,11 @@ public final class HotspotModule extends XposedModule {
     }
 
     private static boolean isWifiTarget(String name) {
+        // Avoid installing observer hooks across every class in the Wi-Fi
+        // service. Broad instrumentation adds overhead and can destabilize
+        // vendor-specific implementations; limit probing to known targets.
         return "com.android.server.wifi.SoftApManager".equals(name)
-            || "com.android.server.wifi.WifiServiceImpl".equals(name)
-            || name.startsWith("com.android.server.wifi.");
+            || "com.android.server.wifi.WifiServiceImpl".equals(name);
     }
 
     private void probeLoadedClass(Class<?> cls) {
