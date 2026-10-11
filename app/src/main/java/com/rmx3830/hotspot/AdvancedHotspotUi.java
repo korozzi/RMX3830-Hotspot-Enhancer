@@ -587,25 +587,31 @@ final class AdvancedHotspotUi {
             List<Object> blocked = copyList(invoke(cfg, "getBlockedClientList"));
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
             boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
-            if (!containsMac(blocked, mac)) blocked.add(parseMac(mac));
+            // Do not remove a pre-existing block when the temporary disconnect ends.
+            boolean temporaryBlockAdded = !containsMac(blocked, mac);
+            if (temporaryBlockAdded) blocked.add(parseMac(mac));
             applyClientLists(wifi, control, allowed, blocked);
             note("CLIENT_FORCE_DISCONNECT_REQUEST");
 
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                try {
-                    Object latest = invoke(wifi, "getSoftApConfiguration");
-                    List<Object> latestBlocked = copyList(invoke(latest, "getBlockedClientList"));
-                    latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
-                    List<Object> latestAllowed = copyList(invoke(latest, "getAllowedClientList"));
-                    boolean latestControl = readBoolean(
-                            latest, "isClientControlByUserEnabled", false);
-                    applyClientLists(wifi, latestControl, latestAllowed, latestBlocked);
-                    note("CLIENT_FORCE_DISCONNECT_RELEASED");
-                } catch (Throwable t) {
-                    Log.i(TAG, "CLIENT_FORCE_DISCONNECT_RELEASE_FAILED "
-                            + t.getClass().getSimpleName());
-                }
-            }, CLIENT_FORCE_DISCONNECT_DELAY_MS);
+            if (temporaryBlockAdded) {
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    try {
+                        Object latest = invoke(wifi, "getSoftApConfiguration");
+                        List<Object> latestBlocked = copyList(
+                                invoke(latest, "getBlockedClientList"));
+                        latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
+                        List<Object> latestAllowed = copyList(
+                                invoke(latest, "getAllowedClientList"));
+                        boolean latestControl = readBoolean(
+                                latest, "isClientControlByUserEnabled", false);
+                        applyClientLists(wifi, latestControl, latestAllowed, latestBlocked);
+                        note("CLIENT_FORCE_DISCONNECT_RELEASED");
+                    } catch (Throwable t) {
+                        Log.i(TAG, "CLIENT_FORCE_DISCONNECT_RELEASE_FAILED "
+                                + t.getClass().getSimpleName());
+                    }
+                }, CLIENT_FORCE_DISCONNECT_DELAY_MS);
+            }
         } catch (Throwable t) {
             showError(context, "Отключение клиента", t);
         }
