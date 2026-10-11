@@ -456,12 +456,8 @@ final class AdvancedHotspotUi {
 
                     latestBlocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
 
-                    // If allow-list mode is active, restoring the device to the
-                    // allowed list is what makes it immediately usable again.
-                    if (control && !containsMac(latestAllowed, mac)) {
-                        latestAllowed.add(parseMac(mac));
-                    }
-
+                    // Unblocking only removes the deny-list entry. Do not silently
+                    // grant allow-list membership; that remains a separate user action.
                     applyClientLists(wifi, control, latestAllowed, latestBlocked);
                     blocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
                     renderBlockedList(context, list, blocked, wifi);
@@ -557,7 +553,8 @@ final class AdvancedHotspotUi {
             List<Object> allowed = copyList(invoke(cfg, "getAllowedClientList"));
             blocked.removeIf(x -> mac.equalsIgnoreCase(macString(x)));
             if (!containsMac(allowed, mac)) allowed.add(parseMac(mac));
-            applyClientLists(wifi, true, allowed, blocked);
+            boolean control = readBoolean(cfg, "isClientControlByUserEnabled", false);
+            applyClientLists(wifi, control, allowed, blocked);
             note("CLIENT_ALLOWED");
         } catch (Throwable t) {
             showError(context, "Белый список", t);
