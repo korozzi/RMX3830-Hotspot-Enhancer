@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build release APK
+    name: Build and sign test APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -32,6 +32,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -40,17 +43,23 @@ jobs:
       - name: Build release APK
         run: gradle --no-daemon --stacktrace assembleRelease
 
-      - name: Verify APK exists
+      - name: Sign APK for testing
         shell: bash
         run: |
           set -euo pipefail
-          test -s app/build/outputs/apk/release/app-release-unsigned.apk
-          ls -lh app/build/outputs/apk/release/app-release-unsigned.apk
+          APK='app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$APK"
+          KEYSTORE="$RUNNER_TEMP/test-signing.jks"
+          keytool -genkeypair -noprompt -keystore "$KEYSTORE" -storepass test-only-password -keypass test-only-password -alias test-key -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=RMX3830 Hotspot Enhancer Test Build, OU=Testing, O=Open Source, L=Unknown, ST=Unknown, C=US'
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias test-key --ks-pass pass:test-only-password --key-pass pass:test-only-password --out app/build/outputs/apk/release/RMX3830-Hotspot-Enhancer-test-signed.apk "$APK"
+          "$BUILD_TOOLS/apksigner" verify --verbose app/build/outputs/apk/release/RMX3830-Hotspot-Enhancer-test-signed.apk
+          rm -f "$KEYSTORE"
 
-      - name: Upload unsigned release APK
+      - name: Upload signed test APK
         uses: actions/upload-artifact@v4
         with:
-          name: RMX3830-Hotspot-Enhancer-${{ github.sha }}
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          name: RMX3830-Hotspot-Enhancer-test-signed-${{ github.sha }}
+          path: app/build/outputs/apk/release/RMX3830-Hotspot-Enhancer-test-signed.apk
           if-no-files-found: error
           retention-days: 14
