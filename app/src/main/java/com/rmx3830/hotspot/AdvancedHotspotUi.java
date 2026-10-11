@@ -336,10 +336,13 @@ final class AdvancedHotspotUi {
             };
 
             add.setOnClickListener(v -> askForMac(context, mac -> {
-                if (!containsMac(allowed, mac)) {
-                    allowed.add(parseMac(mac));
-                    render.run();
-                }
+                if (containsMac(allowed, mac)) return;
+                allowed.add(parseMac(mac));
+                render.run();
+                // Persist the edited list immediately, while preserving the user's
+                // current enable/disable choice. Adding an entry must not enable
+                // allow-list mode by itself.
+                applyNow.run();
             }));
 
             enableSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -832,9 +835,9 @@ final class AdvancedHotspotUi {
                                     if (ip != null && !ip.isEmpty()) {
                                         CLIENT_IPS.put(key, ip);
                                     }
-                                    note("CLIENT_INFO mac=" + key
-                                            + " hostname=" + String.valueOf(hostname)
-                                            + " ip=" + String.valueOf(ip));
+                                    // Device identifiers and hostnames are private
+                                    // network metadata; keep them out of logcat.
+                                    note("CLIENT_INFO_UPDATED");
                                     if (handle.counter != null && handle.list != null
                                             && handle.maxEdit != null) {
                                         refreshClientsFromCallback(handle.counter,
